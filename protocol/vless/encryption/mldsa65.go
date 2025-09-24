@@ -1,11 +1,12 @@
 package vless
 
 import (
-    "crypto/rand"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
 
+    "github.com/cloudflare/circl/sign"
 	"github.com/cloudflare/circl/sign/mldsa/mldsa65"
 )
 
@@ -16,9 +17,9 @@ type MLDSA65Auth struct {
 	// 验证公钥（1952字节）
 	verifyKey []byte
 	// 私钥
-    privateKey *mldsa65.PrivateKey
+    privateKey sign.PrivateKey
 	// 公钥
-    publicKey *mldsa65.PublicKey
+    publicKey sign.PublicKey
 }
 
 // NewMLDSA65Auth 创建新的 MLDSA65 认证实例
@@ -37,11 +38,10 @@ func NewMLDSA65Auth(seed, verifyKey []byte) (*MLDSA65Auth, error) {
 		// 从种子生成密钥
 		var seedArray [32]byte
 		copy(seedArray[:], seed)
-        // CIRCL 返回顺序为 (publicKey, privateKey)
-        publicKey, privateKey := mldsa65.NewKeyFromSeed(&seedArray)
-
-        auth.privateKey = privateKey
-        auth.publicKey = publicKey
+		// CIRCL 返回顺序为 (publicKey, privateKey)
+        pub, priv := mldsa65.NewKeyFromSeed(&seedArray)
+        auth.privateKey = priv
+        auth.publicKey = pub
 	}
 
 	// 如果提供了验证公钥，解析它
@@ -55,12 +55,8 @@ func NewMLDSA65Auth(seed, verifyKey []byte) (*MLDSA65Auth, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to unmarshal verify key: %v", err)
 		}
-
-		// 验证公钥格式
-		if _, ok := verifyPublicKey.(*mldsa65.PublicKey); !ok {
-			return nil, fmt.Errorf("invalid verify key type")
-		}
-        auth.publicKey = verifyPublicKey.(*mldsa65.PublicKey)
+        // 赋值为接口类型
+        auth.publicKey = verifyPublicKey
 	}
 
 	return auth, nil
@@ -98,13 +94,9 @@ func (auth *MLDSA65Auth) Sign(data []byte) ([]byte, error) {
 	// 计算数据的哈希
 	hash := sha256.Sum256(data)
 
-    // 使用 MLDSA65 签名（CIRCL API）
-    signature, err := mldsa65.Scheme().Sign(rand.Reader, auth.privateKey, hash[:])
-	if err != nil {
-		return nil, fmt.Errorf("failed to sign data: %v", err)
-	}
-
-	return signature, nil
+	// 使用 MLDSA65 签名（CIRCL API）
+    sig := mldsa65.Scheme().Sign(auth.privateKey, hash[:], nil)
+    return sig, nil
 }
 
 // Verify 使用 MLDSA65 公钥验证签名
@@ -116,8 +108,8 @@ func (auth *MLDSA65Auth) Verify(data, signature []byte) error {
 	// 计算数据的哈希
 	hash := sha256.Sum256(data)
 
-    // 使用 MLDSA65 验证（CIRCL API 返回 bool）
-    valid := mldsa65.Scheme().Verify(auth.publicKey, hash[:], signature)
+    // 使用 MLDSA65 验证
+    valid := mldsa65.Scheme().Verify(auth.publicKey, hash[:], signature, nil)
 
 	if !valid {
 		return fmt.Errorf("invalid signature")
@@ -138,17 +130,11 @@ func (auth *MLDSA65Auth) VerifyWithExternalKey(data, signature, publicKeyBytes [
 		return fmt.Errorf("failed to unmarshal public key: %v", err)
 	}
 
-	// 验证公钥类型
-	mlDsaPublicKey, ok := publicKey.(*mldsa65.PublicKey)
-	if !ok {
-		return fmt.Errorf("invalid public key type")
-	}
-
 	// 计算数据的哈希
 	hash := sha256.Sum256(data)
 
-    // 使用 MLDSA65 验证（CIRCL API 返回 bool）
-    valid := mldsa65.Scheme().Verify(mlDsaPublicKey, hash[:], signature)
+	// 使用 MLDSA65 验证（CIRCL API 返回 bool）
+    valid := mldsa65.Scheme().Verify(publicKey, hash[:], signature, nil)
 
 	if !valid {
 		return fmt.Errorf("invalid signature")
@@ -159,11 +145,14 @@ func (auth *MLDSA65Auth) VerifyWithExternalKey(data, signature, publicKeyBytes [
 
 // GetPublicKeyBytes 获取公钥的字节表示
 func (auth *MLDSA65Auth) GetPublicKeyBytes() ([]byte, error) {
-	if auth.publicKey == nil {
-		return nil, fmt.Errorf("public key not available")
-	}
-
-	return auth.publicKey.Bytes(), nil
+    if auth.publicKey == nil {
+        return nil, fmt.Errorf("public key not available")
+    }
+    b, err := mldsa65.Scheme().MarshalBinaryPublicKey(auth.publicKey)
+    if err != nil {
+        return nil, err
+    }
+    return b, nil
 }
 
 // GetPublicKeyBase64 获取公钥的 Base64 编码
@@ -202,16 +191,13 @@ func (auth *MLDSA65Auth) IsValid() bool {
 }
 
 // GenerateKeyPair 生成新的密钥对
-func GenerateMLDSA65KeyPair() (*mldsa65.PrivateKey, *mldsa65.PublicKey, error) {
-    pub, priv, err := mldsa65.Scheme().GenerateKey(rand.Reader)
-    if err != nil {
-        return nil, nil, err
-    }
+func GenerateMLDSA65KeyPair() (sign.PrivateKey, sign.PublicKey, error) {
+    pub, priv := mldsa65.Scheme().GenerateKey()
     return priv, pub, nil
 }
 
 // GenerateKeyPairFromSeed 从种子生成密钥对
-func GenerateMLDSA65KeyPairFromSeed(seed [32]byte) (*mldsa65.PrivateKey, *mldsa65.PublicKey) {
+func GenerateMLDSA65KeyPairFromSeed(seed [32]byte) (sign.PrivateKey, sign.PublicKey) {
     pub, priv := mldsa65.NewKeyFromSeed(&seed)
     return priv, pub
 }

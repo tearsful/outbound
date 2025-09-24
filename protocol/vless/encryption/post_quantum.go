@@ -1,7 +1,7 @@
 package vless
 
 import (
-    "crypto/rand"
+	"crypto/rand"
 	"fmt"
 	"io"
 	"sync"
@@ -12,8 +12,8 @@ import (
 
 // PostQuantumEncryption 实现 Post-Quantum Encryption 支持
 type PostQuantumEncryption struct {
-    // 简化占位：暂不引入具体 PQ 实现，保持编译通过
-    publicKeyBytes []byte
+	// 简化占位：暂不引入具体 PQ 实现，保持编译通过
+	publicKeyBytes []byte
 	// 加密模式
 	encryptionMode string
 	// 0-RTT 支持
@@ -45,8 +45,8 @@ func NewPostQuantumEncryption(encryptionMode string) (*PostQuantumEncryption, er
 	switch encryptionMode {
 	case "mlkem768x25519plus.native.0rtt":
 		pqe.zeroRTT = true
-        // 占位：不生成实际公钥
-        pqe.publicKeyBytes = nil
+		// 占位：不生成实际公钥
+		pqe.publicKeyBytes = nil
 
 	default:
 		return nil, fmt.Errorf("unsupported encryption mode: %s", encryptionMode)
@@ -77,16 +77,16 @@ func (pqe *PostQuantumEncryption) Handshake(conn io.ReadWriteCloser, serverPubli
 	var nfsKey []byte
 	var lastCTR *CTRCipher
 
-    for i, serverKey := range serverPublicKeys {
+	for i, serverKey := range serverPublicKeys {
 		var index int
-        // 占位：不实际进行密钥交换，仅按长度推进指针
-        if len(serverKey) == 32 {
-            index = 32
-            nfsKey = make([]byte, 32)
-        } else if len(serverKey) == 1088 {
-            index = 1088
-            nfsKey = make([]byte, 32)
-        } else {
+		// 占位：不实际进行密钥交换，仅按长度推进指针
+		if len(serverKey) == 32 {
+			index = 32
+			nfsKey = make([]byte, 32)
+		} else if len(serverKey) == 1088 {
+			index = 1088
+			nfsKey = make([]byte, 32)
+		} else {
 			return nil, fmt.Errorf("unsupported key length: %d", len(serverKey))
 		}
 
@@ -132,18 +132,18 @@ func (pqe *PostQuantumEncryption) Handshake(conn io.ReadWriteCloser, serverPubli
 	}
 
 	// 解析 ML-KEM 768 和 X25519 公钥
-    mlkem768Ciphertext := decryptedPfsKey[:0]
-    _ = mlkem768Ciphertext
-    x25519PublicKeyBytes := decryptedPfsKey[0:0]
-    _ = x25519PublicKeyBytes
+	mlkem768Ciphertext := decryptedPfsKey[:0]
+	_ = mlkem768Ciphertext
+	x25519PublicKeyBytes := decryptedPfsKey[0:0]
+	_ = x25519PublicKeyBytes
 
 	// 解封装 ML-KEM 768
-    // 占位：不进行真正的解封装
-    mlkem768Key := make([]byte, 32)
+	// 占位：不进行真正的解封装
+	mlkem768Key := make([]byte, 32)
 
 	// 执行 X25519 ECDH
-    // 占位：不进行 ECDH
-    x25519Key := make([]byte, 32)
+	// 占位：不进行 ECDH
+	x25519Key := make([]byte, 32)
 
 	// 组合 PFS 密钥
 	pfsKey := make([]byte, 64)
