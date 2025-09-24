@@ -55,6 +55,9 @@ type Dialer struct {
 	// XHTTP 传输支持
 	transportType string
 	xhttpConfig   *xhttp.XHTTPConfig
+    // Xray-core PQ/0-RTT 相关
+    o0rttToken string
+    pqv        string
 }
 
 func NewDialer(nextDialer netproxy.Dialer, header protocol.Header) (netproxy.Dialer, error) {
@@ -88,17 +91,21 @@ func NewDialer(nextDialer netproxy.Dialer, header protocol.Header) (netproxy.Dia
 	fallbacks := []Fallback{} // 空的回退配置，可以通过配置扩展
 	fallbackManager := NewFallbackManager(fallbacks)
 
-	// 解析加密模式
-	encryptionMode := EncryptionNone
-	if header.Feature2 != "" {
-		encryptionMode = header.Feature2.(string)
-	}
+    // 解析加密模式（支持从 Feature2 注入）
+    encryptionMode := EncryptionNone
+    if header.Feature2 != nil {
+        if enc, ok := header.Feature2.(string); ok {
+            encryptionMode = enc
+        }
+    }
 
-	// 解析传输类型
-	transportType := "tcp"
-	if header.Feature3 != "" {
-		transportType = header.Feature3.(string)
-	}
+    // 解析传输类型（支持从 Feature3 注入）
+    transportType := "tcp"
+    if header.Feature3 != nil {
+        if tr, ok := header.Feature3.(string); ok {
+            transportType = tr
+        }
+    }
 
 	// 初始化 Post-Quantum Encryption（如果支持）
 	var pqeEncryption *encryption.PostQuantumEncryption
@@ -109,16 +116,19 @@ func NewDialer(nextDialer netproxy.Dialer, header protocol.Header) (netproxy.Dia
 		}
 	}
 
-	// 初始化 MLDSA65 认证（如果提供）
+    // 初始化 MLDSA65 认证（如果提供）
 	var mldsa65Auth *encryption.MLDSA65Auth
-	if header.Feature4 != "" && header.Feature5 != "" {
-		seed := header.Feature4.(string)
-		verifyKey := header.Feature5.(string)
-		mldsa65Auth, err = encryption.NewMLDSA65AuthFromBase64(seed, verifyKey)
-		if err != nil {
-			return nil, fmt.Errorf("failed to initialize MLDSA65 auth: %v", err)
-		}
-	}
+    if header.Feature4 != nil && header.Feature5 != nil {
+        if seed, ok1 := header.Feature4.(string); ok1 {
+            if verifyKey, ok2 := header.Feature5.(string); ok2 {
+                var err error
+                mldsa65Auth, err = encryption.NewMLDSA65AuthFromBase64(seed, verifyKey)
+                if err != nil {
+                    return nil, fmt.Errorf("failed to initialize MLDSA65 auth: %v", err)
+                }
+            }
+        }
+    }
 
 	// 初始化 XHTTP 配置（如果使用 XHTTP 传输）
 	var xhttpConfig *xhttp.XHTTPConfig
@@ -129,7 +139,18 @@ func NewDialer(nextDialer netproxy.Dialer, header protocol.Header) (netproxy.Dia
 		}
 	}
 
-	return &Dialer{
+    // 读取 pqv 与 0-RTT token
+    var o0rttToken, pqv string
+    if header.Extra != nil {
+        if v, ok := header.Extra["o0rtt"]; ok {
+            o0rttToken = v
+        }
+        if v, ok := header.Extra["pqv"]; ok {
+            pqv = v
+        }
+    }
+
+    return &Dialer{
 		proxyAddress:    header.ProxyAddress,
 		nextDialer:      nextDialer,
 		metadata:        metadata,
@@ -144,6 +165,8 @@ func NewDialer(nextDialer netproxy.Dialer, header protocol.Header) (netproxy.Dia
 		mldsa65Auth:     mldsa65Auth,
 		transportType:   transportType,
 		xhttpConfig:     xhttpConfig,
+        o0rttToken:      o0rttToken,
+        pqv:             pqv,
 	}, nil
 }
 

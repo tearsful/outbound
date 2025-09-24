@@ -60,6 +60,8 @@ type V2Ray struct {
 	Mldsa65Verify string `json:"mldsa65Verify,omitempty"` // MLDSA65 验证密钥
 	Mode          string `json:"mode,omitempty"`          // XHTTP 模式
 	Pqv           string `json:"pqv,omitempty"`           // Post-Quantum 验证
+	// 衍生字段：从 Encryption 中拆出的 0-RTT token
+	O0rttToken string `json:"o0rttToken,omitempty"`
 }
 
 func NewV2Ray(option *dialer.ExtraOption, nextDialer netproxy.Dialer, link string) (netproxy.Dialer, *dialer.Property, error) {
@@ -249,12 +251,37 @@ func (s *V2Ray) Dialer(option *dialer.ExtraOption, nextDialer netproxy.Dialer) (
 		return nil, nil, fmt.Errorf("%w: network: %v", dialer.UnexpectedFieldErr, s.Net)
 	}
 
+	// 解析 encryption 中的 .0rtt.<token>
+	baseEnc := s.Encryption
+	var o0rtt string
+	if strings.Contains(s.Encryption, ".0rtt.") {
+		parts := strings.SplitN(s.Encryption, ".0rtt.", 2)
+		baseEnc = parts[0] + ".0rtt"
+		if len(parts) == 2 {
+			o0rtt = parts[1]
+			s.O0rttToken = o0rtt
+		}
+	}
+
+	extra := map[string]string{}
+	if o0rtt != "" {
+		extra["o0rtt"] = o0rtt
+	}
+	if s.Pqv != "" {
+		extra["pqv"] = s.Pqv
+	}
+
 	if d, err = protocol.NewDialer(s.Protocol, d, protocol.Header{
 		ProxyAddress: net.JoinHostPort(s.Add, s.Port),
 		Cipher:       getAutoCipher(),
 		Password:     s.ID,
 		IsClient:     true,
 		Feature1:     s.Flow,
+		Feature2:     baseEnc,
+		Feature3:     s.Net,
+		Feature4:     s.Mldsa65Seed,
+		Feature5:     s.Mldsa65Verify,
+		Extra:        extra,
 		//Flags:        protocol.Flags_VMess_UsePacketAddr,
 	}); err != nil {
 		return nil, nil, err
