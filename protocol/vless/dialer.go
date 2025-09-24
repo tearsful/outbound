@@ -58,6 +58,7 @@ type Dialer struct {
 	// Xray-core PQ/0-RTT 相关
 	o0rttToken string
 	pqv        string
+    nfsKeys    [][]byte
 }
 
 func NewDialer(nextDialer netproxy.Dialer, header protocol.Header) (netproxy.Dialer, error) {
@@ -139,8 +140,9 @@ func NewDialer(nextDialer netproxy.Dialer, header protocol.Header) (netproxy.Dia
 		}
 	}
 
-	// 读取 pqv 与 0-RTT token
-	var o0rttToken, pqv string
+    // 读取 pqv 与 0-RTT token
+    var o0rttToken, pqv string
+    var nfsPKeysCsv string
 	if header.Extra != nil {
 		if v, ok := header.Extra["o0rtt"]; ok {
 			o0rttToken = v
@@ -148,7 +150,16 @@ func NewDialer(nextDialer netproxy.Dialer, header protocol.Header) (netproxy.Dia
 		if v, ok := header.Extra["pqv"]; ok {
 			pqv = v
 		}
+        if v, ok := header.Extra["NfsPKeys"]; ok {
+            nfsPKeysCsv = v
+        }
 	}
+
+    // 解析 NfsPKeys (可选，从订阅/链接或后续首次握手发现)
+    var parsedNfsKeys [][]byte
+    if keys, err := ParseNfsPKeysCSVBase64(nfsPKeysCsv); err == nil {
+        parsedNfsKeys = keys
+    }
 
 	return &Dialer{
 		proxyAddress:    header.ProxyAddress,
@@ -167,6 +178,7 @@ func NewDialer(nextDialer netproxy.Dialer, header protocol.Header) (netproxy.Dia
 		xhttpConfig:     xhttpConfig,
 		o0rttToken:      o0rttToken,
 		pqv:             pqv,
+        nfsKeys:         parsedNfsKeys,
 	}, nil
 }
 
@@ -188,9 +200,9 @@ func (d *Dialer) DialContext(ctx context.Context, network string, addr string) (
 		return nil, err
 	}
 
-    // 如果使用 XHTTP 传输，直接使用 XHTTP 拨号器
+	// 如果使用 XHTTP 传输，直接使用 XHTTP 拨号器
 	if d.transportType == TransportXHTTP {
-        return d.dialXHTTP(ctx, magicNetwork, addr)
+		return d.dialXHTTP(ctx, magicNetwork, addr)
 	}
 
 	switch magicNetwork.Network {
@@ -213,14 +225,22 @@ func (d *Dialer) DialContext(ctx context.Context, network string, addr string) (
 
         // 如果使用 Post-Quantum Encryption，执行握手
 		if d.pqeEncryption != nil {
-            // TODO: 从服务端获取/缓存 NfsPKeys （首次握手），并结合 pqv 验证
-            // 目前放置占位逻辑，后续接入 Reality/xhttp 获取链路
-            serverPublicKeys := [][]byte{}
-            session, err := d.pqeEncryption.Handshake(conn, serverPublicKeys)
+            // 准备 NfsPKeys：优先本地缓存/传入，其次可在后续链路中通过 Reality+xhttp 获取
+            serverPublicKeys := d.nfsKeys
+            if len(serverPublicKeys) == 0 {
+                if cached, ok := defaultNfsKeyCache.Get(d.proxyAddress); ok {
+                    serverPublicKeys = cached
+                }
+            }
+			session, err := d.pqeEncryption.Handshake(conn, serverPublicKeys)
 			if err != nil {
 				return nil, fmt.Errorf("post-quantum encryption handshake failed: %v", err)
 			}
-            _ = session
+            // TODO: 若首次握手服务端返回 NfsPKeys，应当提取并缓存
+            if len(serverPublicKeys) != 0 {
+                defaultNfsKeyCache.Set(d.proxyAddress, serverPublicKeys)
+            }
+			_ = session
 		}
 
 		conn, err = NewConn(conn, Metadata{
