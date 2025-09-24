@@ -15,7 +15,7 @@ package socks5
 import (
 	"net/url"
 
-	"github.com/daeuniverse/outbound/netproxy"
+	"github.com/tearsful/outbound/netproxy"
 )
 
 // Version is socks5 version number.

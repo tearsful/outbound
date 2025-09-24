@@ -9,9 +9,9 @@ import (
 	"encoding/binary"
 	"errors"
 
-	"github.com/daeuniverse/outbound/common"
-	rand "github.com/daeuniverse/outbound/pkg/fastrand"
-	"github.com/daeuniverse/outbound/pool"
+	"github.com/tearsful/outbound/common"
+	rand "github.com/tearsful/outbound/pkg/fastrand"
+	"github.com/tearsful/outbound/pool"
 	"github.com/dgryski/go-camellia"
 	"github.com/dgryski/go-idea"
 	"github.com/dgryski/go-rc2"

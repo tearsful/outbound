@@ -7,9 +7,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/daeuniverse/outbound/netproxy"
-	"github.com/daeuniverse/outbound/protocol/trojanc"
-	"github.com/daeuniverse/outbound/protocol/tuic/common"
+	"github.com/tearsful/outbound/netproxy"
+	"github.com/tearsful/outbound/protocol/trojanc"
+	"github.com/tearsful/outbound/protocol/tuic/common"
 )
 
 type clientRing struct {

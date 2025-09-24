@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	proto "github.com/daeuniverse/outbound/pkg/gun_proto"
-	"github.com/daeuniverse/outbound/pool"
+	proto "github.com/tearsful/outbound/pkg/gun_proto"
+	"github.com/tearsful/outbound/pool"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/peer"

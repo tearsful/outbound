@@ -9,9 +9,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/daeuniverse/outbound/common"
-	"github.com/daeuniverse/outbound/common/url"
-	"github.com/daeuniverse/outbound/netproxy"
+	"github.com/tearsful/outbound/common"
+	"github.com/tearsful/outbound/common/url"
+	"github.com/tearsful/outbound/netproxy"
 )
 
 type FromLinkCreator func(gOption *ExtraOption, nextDialer netproxy.Dialer, link string) (dialer netproxy.Dialer, property *Property, err error)

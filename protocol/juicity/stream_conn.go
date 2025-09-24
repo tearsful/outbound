@@ -6,9 +6,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/daeuniverse/outbound/netproxy"
-	"github.com/daeuniverse/outbound/pool"
-	"github.com/daeuniverse/outbound/protocol/trojanc"
+	"github.com/tearsful/outbound/netproxy"
+	"github.com/tearsful/outbound/pool"
+	"github.com/tearsful/outbound/protocol/trojanc"
 	"github.com/daeuniverse/quic-go"
 )
 

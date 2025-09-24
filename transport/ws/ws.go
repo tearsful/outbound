@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/daeuniverse/outbound/dialer"
-	"github.com/daeuniverse/outbound/netproxy"
-	transportTls "github.com/daeuniverse/outbound/transport/tls"
+	"github.com/tearsful/outbound/dialer"
+	"github.com/tearsful/outbound/netproxy"
+	transportTls "github.com/tearsful/outbound/transport/tls"
 	"github.com/gorilla/websocket"
 )
 

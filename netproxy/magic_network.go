@@ -6,7 +6,7 @@ import (
 	"math/bits"
 	"unicode"
 
-	"github.com/daeuniverse/outbound/common"
+	"github.com/tearsful/outbound/common"
 )
 
 const MagicNetworkType = 0

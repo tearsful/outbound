@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/daeuniverse/outbound/netproxy"
-	"github.com/daeuniverse/outbound/protocol"
-	"github.com/daeuniverse/outbound/protocol/vless/vision"
-	"github.com/daeuniverse/outbound/protocol/vmess"
+	"github.com/tearsful/outbound/netproxy"
+	"github.com/tearsful/outbound/protocol"
+	"github.com/tearsful/outbound/protocol/vless/vision"
+	"github.com/tearsful/outbound/protocol/vmess"
 )
 
 const (

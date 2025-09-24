@@ -1,8 +1,8 @@
 package dialer
 
 import (
-	"github.com/daeuniverse/outbound/netproxy"
-	softwindDirect "github.com/daeuniverse/outbound/protocol/direct"
+	"github.com/tearsful/outbound/netproxy"
+	softwindDirect "github.com/tearsful/outbound/protocol/direct"
 )
 
 func NewDirectDialer(option *ExtraOption, fullcone bool) (netproxy.Dialer, *Property) {

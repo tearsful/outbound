@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/daeuniverse/outbound/netproxy"
-	"github.com/daeuniverse/outbound/protocol"
-	"github.com/daeuniverse/outbound/protocol/direct"
+	"github.com/tearsful/outbound/netproxy"
+	"github.com/tearsful/outbound/protocol"
+	"github.com/tearsful/outbound/protocol/direct"
 	"golang.org/x/net/context"
 )
 

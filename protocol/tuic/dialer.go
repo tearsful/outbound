@@ -6,9 +6,9 @@ import (
 	"net"
 	"time"
 
-	"github.com/daeuniverse/outbound/netproxy"
-	"github.com/daeuniverse/outbound/protocol"
-	"github.com/daeuniverse/outbound/protocol/tuic/common"
+	"github.com/tearsful/outbound/netproxy"
+	"github.com/tearsful/outbound/protocol"
+	"github.com/tearsful/outbound/protocol/tuic/common"
 	"github.com/daeuniverse/quic-go"
 	"github.com/google/uuid"
 )

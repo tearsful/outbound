@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/daeuniverse/outbound/ciphers"
-	"github.com/daeuniverse/outbound/netproxy"
-	"github.com/daeuniverse/outbound/protocol"
-	"github.com/daeuniverse/outbound/protocol/infra/socks"
+	"github.com/tearsful/outbound/ciphers"
+	"github.com/tearsful/outbound/netproxy"
+	"github.com/tearsful/outbound/protocol"
+	"github.com/tearsful/outbound/protocol/infra/socks"
 )
 
 func init() {

@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/daeuniverse/outbound/netproxy"
-	"github.com/daeuniverse/outbound/pkg/fastrand"
+	"github.com/tearsful/outbound/netproxy"
+	"github.com/tearsful/outbound/pkg/fastrand"
 )
 
 const (

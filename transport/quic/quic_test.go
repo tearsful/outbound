@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/daeuniverse/outbound/dialer"
+	"github.com/tearsful/outbound/dialer"
 )
 
 func TestParseQuicConfig(t *testing.T) {

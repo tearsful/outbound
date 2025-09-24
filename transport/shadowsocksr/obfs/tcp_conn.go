@@ -6,8 +6,8 @@ import (
 	"io"
 	"sync"
 
-	"github.com/daeuniverse/outbound/ciphers"
-	"github.com/daeuniverse/outbound/netproxy"
+	"github.com/tearsful/outbound/ciphers"
+	"github.com/tearsful/outbound/netproxy"
 )
 
 type Conn struct {

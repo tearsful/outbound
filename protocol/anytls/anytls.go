@@ -3,7 +3,7 @@ package anytls
 import (
 	"encoding/binary"
 
-	"github.com/daeuniverse/outbound/pool"
+	"github.com/tearsful/outbound/pool"
 )
 
 const ( // cmds

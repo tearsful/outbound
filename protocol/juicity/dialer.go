@@ -8,11 +8,11 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/daeuniverse/outbound/netproxy"
-	"github.com/daeuniverse/outbound/protocol"
-	"github.com/daeuniverse/outbound/protocol/shadowsocks"
-	"github.com/daeuniverse/outbound/protocol/trojanc"
-	"github.com/daeuniverse/outbound/protocol/tuic/common"
+	"github.com/tearsful/outbound/netproxy"
+	"github.com/tearsful/outbound/protocol"
+	"github.com/tearsful/outbound/protocol/shadowsocks"
+	"github.com/tearsful/outbound/protocol/trojanc"
+	"github.com/tearsful/outbound/protocol/tuic/common"
 	"github.com/daeuniverse/quic-go"
 	"github.com/google/uuid"
 )

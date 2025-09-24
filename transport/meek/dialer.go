@@ -7,7 +7,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/daeuniverse/outbound/netproxy"
+	"github.com/tearsful/outbound/netproxy"
 )
 
 type Dialer struct {

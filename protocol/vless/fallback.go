@@ -5,7 +5,7 @@ import (
 	"net"
 	"strings"
 
-	"github.com/daeuniverse/outbound/netproxy"
+	"github.com/tearsful/outbound/netproxy"
 )
 
 // FallbackManager 管理 VLESS 协议的回退机制

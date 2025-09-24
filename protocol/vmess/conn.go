@@ -12,10 +12,10 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/daeuniverse/outbound/common"
-	"github.com/daeuniverse/outbound/netproxy"
-	"github.com/daeuniverse/outbound/pkg/fastrand"
-	"github.com/daeuniverse/outbound/pool"
+	"github.com/tearsful/outbound/common"
+	"github.com/tearsful/outbound/netproxy"
+	"github.com/tearsful/outbound/pkg/fastrand"
+	"github.com/tearsful/outbound/pool"
 )
 
 const (

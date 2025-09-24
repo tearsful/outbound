@@ -7,9 +7,9 @@ import (
 	"io"
 	"net/netip"
 
-	"github.com/daeuniverse/outbound/common/iout"
-	"github.com/daeuniverse/outbound/netproxy"
-	"github.com/daeuniverse/outbound/pool"
+	"github.com/tearsful/outbound/common/iout"
+	"github.com/tearsful/outbound/netproxy"
+	"github.com/tearsful/outbound/pool"
 )
 
 var _ netproxy.PacketConn = (*PacketConn)(nil)

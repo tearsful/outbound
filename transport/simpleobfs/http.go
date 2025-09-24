@@ -11,9 +11,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/daeuniverse/outbound/netproxy"
-	"github.com/daeuniverse/outbound/pkg/fastrand"
-	"github.com/daeuniverse/outbound/pool"
+	"github.com/tearsful/outbound/netproxy"
+	"github.com/tearsful/outbound/pkg/fastrand"
+	"github.com/tearsful/outbound/pool"
 )
 
 // HTTPObfs is shadowsocks http simple-obfs implementation

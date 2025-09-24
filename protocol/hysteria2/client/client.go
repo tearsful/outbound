@@ -10,11 +10,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/daeuniverse/outbound/netproxy"
-	coreErrs "github.com/daeuniverse/outbound/protocol/hysteria2/errors"
-	"github.com/daeuniverse/outbound/protocol/hysteria2/internal/protocol"
-	"github.com/daeuniverse/outbound/protocol/hysteria2/internal/utils"
-	"github.com/daeuniverse/outbound/protocol/tuic/congestion"
+	"github.com/tearsful/outbound/netproxy"
+	coreErrs "github.com/tearsful/outbound/protocol/hysteria2/errors"
+	"github.com/tearsful/outbound/protocol/hysteria2/internal/protocol"
+	"github.com/tearsful/outbound/protocol/hysteria2/internal/utils"
+	"github.com/tearsful/outbound/protocol/tuic/congestion"
 
 	"github.com/daeuniverse/quic-go"
 	"github.com/daeuniverse/quic-go/http3"

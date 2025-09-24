@@ -1,6 +1,6 @@
 package pool
 
-import "github.com/daeuniverse/outbound/common"
+import "github.com/tearsful/outbound/common"
 
 type Bytes interface {
 	Put()

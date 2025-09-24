@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/daeuniverse/outbound/common"
-	rand "github.com/daeuniverse/outbound/pkg/fastrand"
-	"github.com/daeuniverse/outbound/pool"
-	swBytes "github.com/daeuniverse/outbound/pool/bytes"
+	"github.com/tearsful/outbound/common"
+	rand "github.com/tearsful/outbound/pkg/fastrand"
+	"github.com/tearsful/outbound/pool"
+	swBytes "github.com/tearsful/outbound/pool/bytes"
 )
 
 func init() {

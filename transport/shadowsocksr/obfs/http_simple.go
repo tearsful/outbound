@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	rand "github.com/daeuniverse/outbound/pkg/fastrand"
-	"github.com/daeuniverse/outbound/pool"
+	rand "github.com/tearsful/outbound/pkg/fastrand"
+	"github.com/tearsful/outbound/pool"
 )
 
 var (

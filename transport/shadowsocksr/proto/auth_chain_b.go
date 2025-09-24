@@ -3,9 +3,9 @@ package proto
 import (
 	"sort"
 
-	"github.com/daeuniverse/outbound/common"
-	"github.com/daeuniverse/outbound/pool/bytes"
-	"github.com/daeuniverse/outbound/transport/shadowsocksr/internal/crypto"
+	"github.com/tearsful/outbound/common"
+	"github.com/tearsful/outbound/pool/bytes"
+	"github.com/tearsful/outbound/transport/shadowsocksr/internal/crypto"
 )
 
 func init() {

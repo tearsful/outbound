@@ -1,7 +1,7 @@
 package protocol
 
 import (
-	rand "github.com/daeuniverse/outbound/pkg/fastrand"
+	rand "github.com/tearsful/outbound/pkg/fastrand"
 )
 
 const (

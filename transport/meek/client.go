@@ -7,7 +7,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/daeuniverse/outbound/netproxy"
+	"github.com/tearsful/outbound/netproxy"
 )
 
 type assemblerClient struct {

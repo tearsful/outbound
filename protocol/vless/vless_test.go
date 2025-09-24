@@ -3,7 +3,7 @@ package vless
 import (
 	"testing"
 
-	"github.com/daeuniverse/outbound/protocol"
+	"github.com/tearsful/outbound/protocol"
 )
 
 func TestNewDialer(t *testing.T) {

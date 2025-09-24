@@ -6,7 +6,7 @@ import (
 	"crypto/sha1"
 	"io"
 
-	"github.com/daeuniverse/outbound/pool"
+	"github.com/tearsful/outbound/pool"
 	"golang.org/x/crypto/chacha20poly1305"
 	"golang.org/x/crypto/hkdf"
 )

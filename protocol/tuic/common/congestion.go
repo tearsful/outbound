@@ -1,7 +1,7 @@
 package common
 
 import (
-	"github.com/daeuniverse/outbound/protocol/tuic/congestion"
+	"github.com/tearsful/outbound/protocol/tuic/congestion"
 	"github.com/daeuniverse/quic-go"
 )
 

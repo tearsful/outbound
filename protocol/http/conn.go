@@ -17,7 +17,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/daeuniverse/outbound/netproxy"
+	"github.com/tearsful/outbound/netproxy"
 	"golang.org/x/net/http2"
 )
 

@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/daeuniverse/outbound/ciphers"
-	"github.com/daeuniverse/outbound/netproxy"
-	"github.com/daeuniverse/outbound/pool"
+	"github.com/tearsful/outbound/ciphers"
+	"github.com/tearsful/outbound/netproxy"
+	"github.com/tearsful/outbound/pool"
 )
 
 // TcpConn the struct that override the netproxy.Conn methods

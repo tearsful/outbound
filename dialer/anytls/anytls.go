@@ -5,9 +5,9 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/daeuniverse/outbound/dialer"
-	"github.com/daeuniverse/outbound/netproxy"
-	"github.com/daeuniverse/outbound/protocol"
+	"github.com/tearsful/outbound/dialer"
+	"github.com/tearsful/outbound/netproxy"
+	"github.com/tearsful/outbound/protocol"
 )
 
 func init() {

@@ -6,10 +6,10 @@ import (
 	"net/netip"
 	"strconv"
 
-	"github.com/daeuniverse/outbound/ciphers"
-	"github.com/daeuniverse/outbound/netproxy"
-	"github.com/daeuniverse/outbound/pool"
-	"github.com/daeuniverse/outbound/protocol"
+	"github.com/tearsful/outbound/ciphers"
+	"github.com/tearsful/outbound/netproxy"
+	"github.com/tearsful/outbound/pool"
+	"github.com/tearsful/outbound/protocol"
 	disk_bloom "github.com/mzz2017/disk-bloom"
 )
 

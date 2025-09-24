@@ -5,8 +5,8 @@ import (
 	"net"
 	"testing"
 
-	"github.com/daeuniverse/outbound/netproxy"
-	"github.com/daeuniverse/outbound/protocol/juicity"
+	"github.com/tearsful/outbound/netproxy"
+	"github.com/tearsful/outbound/protocol/juicity"
 	"github.com/daeuniverse/quic-go"
 	"github.com/stretchr/testify/require"
 )

@@ -7,15 +7,15 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/daeuniverse/outbound/transport/tls"
+	"github.com/tearsful/outbound/transport/tls"
 
-	"github.com/daeuniverse/outbound/common"
-	"github.com/daeuniverse/outbound/dialer"
-	"github.com/daeuniverse/outbound/netproxy"
-	"github.com/daeuniverse/outbound/protocol"
-	"github.com/daeuniverse/outbound/transport/grpc"
-	"github.com/daeuniverse/outbound/transport/httpupgrade"
-	"github.com/daeuniverse/outbound/transport/ws"
+	"github.com/tearsful/outbound/common"
+	"github.com/tearsful/outbound/dialer"
+	"github.com/tearsful/outbound/netproxy"
+	"github.com/tearsful/outbound/protocol"
+	"github.com/tearsful/outbound/transport/grpc"
+	"github.com/tearsful/outbound/transport/httpupgrade"
+	"github.com/tearsful/outbound/transport/ws"
 )
 
 func init() {

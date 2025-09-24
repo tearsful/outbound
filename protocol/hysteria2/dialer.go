@@ -7,11 +7,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/daeuniverse/outbound/netproxy"
-	"github.com/daeuniverse/outbound/protocol"
-	"github.com/daeuniverse/outbound/protocol/hysteria2/client"
-	"github.com/daeuniverse/outbound/protocol/hysteria2/udphop"
-	"github.com/daeuniverse/outbound/protocol/tuic/common"
+	"github.com/tearsful/outbound/netproxy"
+	"github.com/tearsful/outbound/protocol"
+	"github.com/tearsful/outbound/protocol/hysteria2/client"
+	"github.com/tearsful/outbound/protocol/hysteria2/udphop"
+	"github.com/tearsful/outbound/protocol/tuic/common"
 )
 
 func init() {

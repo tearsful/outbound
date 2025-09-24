@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/daeuniverse/outbound/ciphers"
-	"github.com/daeuniverse/outbound/pool"
+	"github.com/tearsful/outbound/ciphers"
+	"github.com/tearsful/outbound/pool"
 	"golang.org/x/crypto/hkdf"
 )
 

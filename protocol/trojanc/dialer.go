@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/daeuniverse/outbound/netproxy"
-	"github.com/daeuniverse/outbound/protocol"
+	"github.com/tearsful/outbound/netproxy"
+	"github.com/tearsful/outbound/protocol"
 )
 
 func init() {

@@ -13,10 +13,10 @@ import (
 	"hash/fnv"
 	"time"
 
-	"github.com/daeuniverse/outbound/common"
-	"github.com/daeuniverse/outbound/pkg/fastrand"
-	"github.com/daeuniverse/outbound/pool"
-	"github.com/daeuniverse/outbound/protocol"
+	"github.com/tearsful/outbound/common"
+	"github.com/tearsful/outbound/pkg/fastrand"
+	"github.com/tearsful/outbound/pool"
+	"github.com/tearsful/outbound/protocol"
 	"golang.org/x/crypto/chacha20poly1305"
 )
 

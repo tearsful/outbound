@@ -8,12 +8,12 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/daeuniverse/outbound/common"
-	"github.com/daeuniverse/outbound/dialer"
-	"github.com/daeuniverse/outbound/netproxy"
-	"github.com/daeuniverse/outbound/protocol"
-	"github.com/daeuniverse/outbound/transport/shadowsocksr/obfs"
-	"github.com/daeuniverse/outbound/transport/shadowsocksr/proto"
+	"github.com/tearsful/outbound/common"
+	"github.com/tearsful/outbound/dialer"
+	"github.com/tearsful/outbound/netproxy"
+	"github.com/tearsful/outbound/protocol"
+	"github.com/tearsful/outbound/transport/shadowsocksr/obfs"
+	"github.com/tearsful/outbound/transport/shadowsocksr/proto"
 )
 
 func init() {
