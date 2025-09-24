@@ -1,12 +1,11 @@
 package vless
 
 import (
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
 
-    "github.com/cloudflare/circl/sign"
+	"github.com/cloudflare/circl/sign"
 	"github.com/cloudflare/circl/sign/mldsa/mldsa65"
 )
 
@@ -17,9 +16,9 @@ type MLDSA65Auth struct {
 	// 验证公钥（1952字节）
 	verifyKey []byte
 	// 私钥
-    privateKey sign.PrivateKey
+	privateKey sign.PrivateKey
 	// 公钥
-    publicKey sign.PublicKey
+	publicKey sign.PublicKey
 }
 
 // NewMLDSA65Auth 创建新的 MLDSA65 认证实例
@@ -39,9 +38,9 @@ func NewMLDSA65Auth(seed, verifyKey []byte) (*MLDSA65Auth, error) {
 		var seedArray [32]byte
 		copy(seedArray[:], seed)
 		// CIRCL 返回顺序为 (publicKey, privateKey)
-        pub, priv := mldsa65.NewKeyFromSeed(&seedArray)
-        auth.privateKey = priv
-        auth.publicKey = pub
+		pub, priv := mldsa65.NewKeyFromSeed(&seedArray)
+		auth.privateKey = priv
+		auth.publicKey = pub
 	}
 
 	// 如果提供了验证公钥，解析它
@@ -51,12 +50,12 @@ func NewMLDSA65Auth(seed, verifyKey []byte) (*MLDSA65Auth, error) {
 		}
 
 		// 解析验证公钥
-        verifyPublicKey, err := mldsa65.Scheme().UnmarshalBinaryPublicKey(verifyKey)
+		verifyPublicKey, err := mldsa65.Scheme().UnmarshalBinaryPublicKey(verifyKey)
 		if err != nil {
 			return nil, fmt.Errorf("failed to unmarshal verify key: %v", err)
 		}
-        // 赋值为接口类型
-        auth.publicKey = verifyPublicKey
+		// 赋值为接口类型
+		auth.publicKey = verifyPublicKey
 	}
 
 	return auth, nil
@@ -95,8 +94,8 @@ func (auth *MLDSA65Auth) Sign(data []byte) ([]byte, error) {
 	hash := sha256.Sum256(data)
 
 	// 使用 MLDSA65 签名（CIRCL API）
-    sig := mldsa65.Scheme().Sign(auth.privateKey, hash[:], nil)
-    return sig, nil
+	sig := mldsa65.Scheme().Sign(auth.privateKey, hash[:], nil)
+	return sig, nil
 }
 
 // Verify 使用 MLDSA65 公钥验证签名
@@ -108,8 +107,8 @@ func (auth *MLDSA65Auth) Verify(data, signature []byte) error {
 	// 计算数据的哈希
 	hash := sha256.Sum256(data)
 
-    // 使用 MLDSA65 验证
-    valid := mldsa65.Scheme().Verify(auth.publicKey, hash[:], signature, nil)
+	// 使用 MLDSA65 验证
+	valid := mldsa65.Scheme().Verify(auth.publicKey, hash[:], signature, nil)
 
 	if !valid {
 		return fmt.Errorf("invalid signature")
@@ -125,7 +124,7 @@ func (auth *MLDSA65Auth) VerifyWithExternalKey(data, signature, publicKeyBytes [
 	}
 
 	// 解析公钥
-    publicKey, err := mldsa65.Scheme().UnmarshalBinaryPublicKey(publicKeyBytes)
+	publicKey, err := mldsa65.Scheme().UnmarshalBinaryPublicKey(publicKeyBytes)
 	if err != nil {
 		return fmt.Errorf("failed to unmarshal public key: %v", err)
 	}
@@ -134,7 +133,7 @@ func (auth *MLDSA65Auth) VerifyWithExternalKey(data, signature, publicKeyBytes [
 	hash := sha256.Sum256(data)
 
 	// 使用 MLDSA65 验证（CIRCL API 返回 bool）
-    valid := mldsa65.Scheme().Verify(publicKey, hash[:], signature, nil)
+	valid := mldsa65.Scheme().Verify(publicKey, hash[:], signature, nil)
 
 	if !valid {
 		return fmt.Errorf("invalid signature")
@@ -145,14 +144,13 @@ func (auth *MLDSA65Auth) VerifyWithExternalKey(data, signature, publicKeyBytes [
 
 // GetPublicKeyBytes 获取公钥的字节表示
 func (auth *MLDSA65Auth) GetPublicKeyBytes() ([]byte, error) {
-    if auth.publicKey == nil {
-        return nil, fmt.Errorf("public key not available")
+	if auth.publicKey == nil {
+		return nil, fmt.Errorf("public key not available")
+	}
+    if pk, ok := auth.publicKey.(*mldsa65.PublicKey); ok {
+        return pk.Bytes(), nil
     }
-    b, err := mldsa65.Scheme().MarshalBinaryPublicKey(auth.publicKey)
-    if err != nil {
-        return nil, err
-    }
-    return b, nil
+    return nil, fmt.Errorf("unexpected public key type")
 }
 
 // GetPublicKeyBase64 获取公钥的 Base64 编码
@@ -192,12 +190,15 @@ func (auth *MLDSA65Auth) IsValid() bool {
 
 // GenerateKeyPair 生成新的密钥对
 func GenerateMLDSA65KeyPair() (sign.PrivateKey, sign.PublicKey, error) {
-    pub, priv := mldsa65.Scheme().GenerateKey()
+    pub, priv, err := mldsa65.Scheme().GenerateKey()
+    if err != nil {
+        return nil, nil, err
+    }
     return priv, pub, nil
 }
 
 // GenerateKeyPairFromSeed 从种子生成密钥对
 func GenerateMLDSA65KeyPairFromSeed(seed [32]byte) (sign.PrivateKey, sign.PublicKey) {
-    pub, priv := mldsa65.NewKeyFromSeed(&seed)
-    return priv, pub
+	pub, priv := mldsa65.NewKeyFromSeed(&seed)
+	return priv, pub
 }
