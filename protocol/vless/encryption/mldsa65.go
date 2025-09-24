@@ -1,6 +1,7 @@
 package vless
 
 import (
+    "crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
@@ -15,9 +16,9 @@ type MLDSA65Auth struct {
 	// 验证公钥（1952字节）
 	verifyKey []byte
 	// 私钥
-	privateKey *mldsa65.PrivateKey
+    privateKey *mldsa65.PrivateKey
 	// 公钥
-	publicKey *mldsa65.PublicKey
+    publicKey *mldsa65.PublicKey
 }
 
 // NewMLDSA65Auth 创建新的 MLDSA65 认证实例
@@ -36,10 +37,11 @@ func NewMLDSA65Auth(seed, verifyKey []byte) (*MLDSA65Auth, error) {
 		// 从种子生成密钥
 		var seedArray [32]byte
 		copy(seedArray[:], seed)
-		privateKey, publicKey := mldsa65.NewKeyFromSeed(&seedArray)
+        // CIRCL 返回顺序为 (publicKey, privateKey)
+        publicKey, privateKey := mldsa65.NewKeyFromSeed(&seedArray)
 
-		auth.privateKey = privateKey
-		auth.publicKey = publicKey
+        auth.privateKey = privateKey
+        auth.publicKey = publicKey
 	}
 
 	// 如果提供了验证公钥，解析它
@@ -49,7 +51,7 @@ func NewMLDSA65Auth(seed, verifyKey []byte) (*MLDSA65Auth, error) {
 		}
 
 		// 解析验证公钥
-		verifyPublicKey, err := mldsa65.Scheme().UnmarshalBinaryPublicKey(verifyKey)
+        verifyPublicKey, err := mldsa65.Scheme().UnmarshalBinaryPublicKey(verifyKey)
 		if err != nil {
 			return nil, fmt.Errorf("failed to unmarshal verify key: %v", err)
 		}
@@ -58,6 +60,7 @@ func NewMLDSA65Auth(seed, verifyKey []byte) (*MLDSA65Auth, error) {
 		if _, ok := verifyPublicKey.(*mldsa65.PublicKey); !ok {
 			return nil, fmt.Errorf("invalid verify key type")
 		}
+        auth.publicKey = verifyPublicKey.(*mldsa65.PublicKey)
 	}
 
 	return auth, nil
@@ -95,8 +98,8 @@ func (auth *MLDSA65Auth) Sign(data []byte) ([]byte, error) {
 	// 计算数据的哈希
 	hash := sha256.Sum256(data)
 
-	// 使用 MLDSA65 签名
-	signature, err := mldsa65.Sign(auth.privateKey, hash[:], nil)
+    // 使用 MLDSA65 签名（CIRCL API）
+    signature, err := mldsa65.Scheme().Sign(rand.Reader, auth.privateKey, hash[:])
 	if err != nil {
 		return nil, fmt.Errorf("failed to sign data: %v", err)
 	}
@@ -113,11 +116,8 @@ func (auth *MLDSA65Auth) Verify(data, signature []byte) error {
 	// 计算数据的哈希
 	hash := sha256.Sum256(data)
 
-	// 使用 MLDSA65 验证
-	valid, err := mldsa65.Verify(auth.publicKey, hash[:], nil, signature)
-	if err != nil {
-		return fmt.Errorf("failed to verify signature: %v", err)
-	}
+    // 使用 MLDSA65 验证（CIRCL API 返回 bool）
+    valid := mldsa65.Scheme().Verify(auth.publicKey, hash[:], signature)
 
 	if !valid {
 		return fmt.Errorf("invalid signature")
@@ -133,7 +133,7 @@ func (auth *MLDSA65Auth) VerifyWithExternalKey(data, signature, publicKeyBytes [
 	}
 
 	// 解析公钥
-	publicKey, err := mldsa65.Scheme().UnmarshalBinaryPublicKey(publicKeyBytes)
+    publicKey, err := mldsa65.Scheme().UnmarshalBinaryPublicKey(publicKeyBytes)
 	if err != nil {
 		return fmt.Errorf("failed to unmarshal public key: %v", err)
 	}
@@ -147,11 +147,8 @@ func (auth *MLDSA65Auth) VerifyWithExternalKey(data, signature, publicKeyBytes [
 	// 计算数据的哈希
 	hash := sha256.Sum256(data)
 
-	// 使用 MLDSA65 验证
-	valid, err := mldsa65.Verify(mlDsaPublicKey, hash[:], nil, signature)
-	if err != nil {
-		return fmt.Errorf("failed to verify signature: %v", err)
-	}
+    // 使用 MLDSA65 验证（CIRCL API 返回 bool）
+    valid := mldsa65.Scheme().Verify(mlDsaPublicKey, hash[:], signature)
 
 	if !valid {
 		return fmt.Errorf("invalid signature")
@@ -206,10 +203,15 @@ func (auth *MLDSA65Auth) IsValid() bool {
 
 // GenerateKeyPair 生成新的密钥对
 func GenerateMLDSA65KeyPair() (*mldsa65.PrivateKey, *mldsa65.PublicKey, error) {
-	return mldsa65.GenerateKey()
+    pub, priv, err := mldsa65.Scheme().GenerateKey(rand.Reader)
+    if err != nil {
+        return nil, nil, err
+    }
+    return priv, pub, nil
 }
 
 // GenerateKeyPairFromSeed 从种子生成密钥对
 func GenerateMLDSA65KeyPairFromSeed(seed [32]byte) (*mldsa65.PrivateKey, *mldsa65.PublicKey) {
-	return mldsa65.NewKeyFromSeed(&seed)
+    pub, priv := mldsa65.NewKeyFromSeed(&seed)
+    return priv, pub
 }

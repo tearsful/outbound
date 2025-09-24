@@ -3,6 +3,7 @@ package vless
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/tearsful/outbound/netproxy"
 	"github.com/tearsful/outbound/protocol"
@@ -133,33 +134,33 @@ func NewDialer(nextDialer netproxy.Dialer, header protocol.Header) (netproxy.Dia
 
 	// 初始化 XHTTP 配置（如果使用 XHTTP 传输）
 	var xhttpConfig *xhttp.XHTTPConfig
-    if transportType == TransportXHTTP {
-        xhttpConfig, err = xhttp.ParseXHTTPConfig(header.ProxyAddress)
-        if err != nil {
-            return nil, fmt.Errorf("failed to parse XHTTP config: %v", err)
-        }
-        // 从 Extra 携带的 xhttp 参数补充配置
-        if header.Extra != nil {
-            if v, ok := header.Extra["xhttp.path"]; ok && v != "" {
-                xhttpConfig.Path = v
-            }
-            if v, ok := header.Extra["xhttp.mode"]; ok && v != "" {
-                xhttpConfig.Mode = v
-            }
-            if v, ok := header.Extra["xhttp.headers"]; ok && v != "" {
-                // 解析 CSV 头部列表: k:v,k2:v2
-                if xhttpConfig.Headers == nil {
-                    xhttpConfig.Headers = map[string]string{}
-                }
-                for _, part := range strings.Split(v, ",") {
-                    kv := strings.SplitN(strings.TrimSpace(part), ":", 2)
-                    if len(kv) == 2 {
-                        xhttpConfig.Headers[strings.TrimSpace(kv[0])] = strings.TrimSpace(kv[1])
-                    }
-                }
-            }
-        }
-    }
+	if transportType == TransportXHTTP {
+		xhttpConfig, err = xhttp.ParseXHTTPConfig(header.ProxyAddress)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse XHTTP config: %v", err)
+		}
+		// 从 Extra 携带的 xhttp 参数补充配置
+		if header.Extra != nil {
+			if v, ok := header.Extra["xhttp.path"]; ok && v != "" {
+				xhttpConfig.Path = v
+			}
+			if v, ok := header.Extra["xhttp.mode"]; ok && v != "" {
+				xhttpConfig.Mode = v
+			}
+			if v, ok := header.Extra["xhttp.headers"]; ok && v != "" {
+				// 解析 CSV 头部列表: k:v,k2:v2
+				if xhttpConfig.Headers == nil {
+					xhttpConfig.Headers = map[string]string{}
+				}
+				for _, part := range strings.Split(v, ",") {
+					kv := strings.SplitN(strings.TrimSpace(part), ":", 2)
+					if len(kv) == 2 {
+						xhttpConfig.Headers[strings.TrimSpace(kv[0])] = strings.TrimSpace(kv[1])
+					}
+				}
+			}
+		}
+	}
 
 	// 读取 pqv 与 0-RTT token
 	var o0rttToken, pqv string
