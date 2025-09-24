@@ -1,4 +1,4 @@
-package vless
+package encryption
 
 import (
 	"crypto/sha256"
