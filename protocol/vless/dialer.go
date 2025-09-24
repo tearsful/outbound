@@ -55,9 +55,9 @@ type Dialer struct {
 	// XHTTP 传输支持
 	transportType string
 	xhttpConfig   *xhttp.XHTTPConfig
-    // Xray-core PQ/0-RTT 相关
-    o0rttToken string
-    pqv        string
+	// Xray-core PQ/0-RTT 相关
+	o0rttToken string
+	pqv        string
 }
 
 func NewDialer(nextDialer netproxy.Dialer, header protocol.Header) (netproxy.Dialer, error) {
@@ -91,21 +91,21 @@ func NewDialer(nextDialer netproxy.Dialer, header protocol.Header) (netproxy.Dia
 	fallbacks := []Fallback{} // 空的回退配置，可以通过配置扩展
 	fallbackManager := NewFallbackManager(fallbacks)
 
-    // 解析加密模式（支持从 Feature2 注入）
-    encryptionMode := EncryptionNone
-    if header.Feature2 != nil {
-        if enc, ok := header.Feature2.(string); ok {
-            encryptionMode = enc
-        }
-    }
+	// 解析加密模式（支持从 Feature2 注入）
+	encryptionMode := EncryptionNone
+	if header.Feature2 != nil {
+		if enc, ok := header.Feature2.(string); ok {
+			encryptionMode = enc
+		}
+	}
 
-    // 解析传输类型（支持从 Feature3 注入）
-    transportType := "tcp"
-    if header.Feature3 != nil {
-        if tr, ok := header.Feature3.(string); ok {
-            transportType = tr
-        }
-    }
+	// 解析传输类型（支持从 Feature3 注入）
+	transportType := "tcp"
+	if header.Feature3 != nil {
+		if tr, ok := header.Feature3.(string); ok {
+			transportType = tr
+		}
+	}
 
 	// 初始化 Post-Quantum Encryption（如果支持）
 	var pqeEncryption *encryption.PostQuantumEncryption
@@ -116,19 +116,19 @@ func NewDialer(nextDialer netproxy.Dialer, header protocol.Header) (netproxy.Dia
 		}
 	}
 
-    // 初始化 MLDSA65 认证（如果提供）
+	// 初始化 MLDSA65 认证（如果提供）
 	var mldsa65Auth *encryption.MLDSA65Auth
-    if header.Feature4 != nil && header.Feature5 != nil {
-        if seed, ok1 := header.Feature4.(string); ok1 {
-            if verifyKey, ok2 := header.Feature5.(string); ok2 {
-                var err error
-                mldsa65Auth, err = encryption.NewMLDSA65AuthFromBase64(seed, verifyKey)
-                if err != nil {
-                    return nil, fmt.Errorf("failed to initialize MLDSA65 auth: %v", err)
-                }
-            }
-        }
-    }
+	if header.Feature4 != nil && header.Feature5 != nil {
+		if seed, ok1 := header.Feature4.(string); ok1 {
+			if verifyKey, ok2 := header.Feature5.(string); ok2 {
+				var err error
+				mldsa65Auth, err = encryption.NewMLDSA65AuthFromBase64(seed, verifyKey)
+				if err != nil {
+					return nil, fmt.Errorf("failed to initialize MLDSA65 auth: %v", err)
+				}
+			}
+		}
+	}
 
 	// 初始化 XHTTP 配置（如果使用 XHTTP 传输）
 	var xhttpConfig *xhttp.XHTTPConfig
@@ -139,18 +139,18 @@ func NewDialer(nextDialer netproxy.Dialer, header protocol.Header) (netproxy.Dia
 		}
 	}
 
-    // 读取 pqv 与 0-RTT token
-    var o0rttToken, pqv string
-    if header.Extra != nil {
-        if v, ok := header.Extra["o0rtt"]; ok {
-            o0rttToken = v
-        }
-        if v, ok := header.Extra["pqv"]; ok {
-            pqv = v
-        }
-    }
+	// 读取 pqv 与 0-RTT token
+	var o0rttToken, pqv string
+	if header.Extra != nil {
+		if v, ok := header.Extra["o0rtt"]; ok {
+			o0rttToken = v
+		}
+		if v, ok := header.Extra["pqv"]; ok {
+			pqv = v
+		}
+	}
 
-    return &Dialer{
+	return &Dialer{
 		proxyAddress:    header.ProxyAddress,
 		nextDialer:      nextDialer,
 		metadata:        metadata,
@@ -165,8 +165,8 @@ func NewDialer(nextDialer netproxy.Dialer, header protocol.Header) (netproxy.Dia
 		mldsa65Auth:     mldsa65Auth,
 		transportType:   transportType,
 		xhttpConfig:     xhttpConfig,
-        o0rttToken:      o0rttToken,
-        pqv:             pqv,
+		o0rttToken:      o0rttToken,
+		pqv:             pqv,
 	}, nil
 }
 
@@ -188,9 +188,9 @@ func (d *Dialer) DialContext(ctx context.Context, network string, addr string) (
 		return nil, err
 	}
 
-	// 如果使用 XHTTP 传输，直接使用 XHTTP 拨号器
+    // 如果使用 XHTTP 传输，直接使用 XHTTP 拨号器
 	if d.transportType == TransportXHTTP {
-		return d.dialXHTTP(ctx, magicNetwork, addr)
+        return d.dialXHTTP(ctx, magicNetwork, addr)
 	}
 
 	switch magicNetwork.Network {
@@ -211,16 +211,16 @@ func (d *Dialer) DialContext(ctx context.Context, network string, addr string) (
 			return nil, err
 		}
 
-		// 如果使用 Post-Quantum Encryption，执行握手
+        // 如果使用 Post-Quantum Encryption，执行握手
 		if d.pqeEncryption != nil {
-			// 这里需要服务器公钥，实际实现中应该从配置获取
-			serverPublicKeys := [][]byte{} // 从配置获取
-			session, err := d.pqeEncryption.Handshake(conn, serverPublicKeys)
+            // TODO: 从服务端获取/缓存 NfsPKeys （首次握手），并结合 pqv 验证
+            // 目前放置占位逻辑，后续接入 Reality/xhttp 获取链路
+            serverPublicKeys := [][]byte{}
+            session, err := d.pqeEncryption.Handshake(conn, serverPublicKeys)
 			if err != nil {
 				return nil, fmt.Errorf("post-quantum encryption handshake failed: %v", err)
 			}
-			// 使用会话密钥更新连接
-			// 这里需要根据实际协议实现
+            _ = session
 		}
 
 		conn, err = NewConn(conn, Metadata{
