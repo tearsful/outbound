@@ -282,6 +282,16 @@ func (d *Dialer) DialContext(ctx context.Context, network string, addr string) (
 // dialXHTTP 使用 XHTTP 传输建立连接
 func (d *Dialer) dialXHTTP(ctx context.Context, magicNetwork netproxy.MagicNetwork, addr string) (netproxy.Conn, error) {
 	// 创建 XHTTP 拨号器
+	if d.xhttpConfig != nil {
+		cfg := d.xhttpConfig
+		// 注入 NfsPKeys 回调：写入缓存供后续 PQ/0-RTT 复用
+		cfg.OnNfsPKeys = func(keys [][]byte) {
+			if len(keys) == 0 {
+				return
+			}
+			defaultNfsKeyCache.Set(d.proxyAddress, keys)
+		}
+	}
 	xhttpDialer, err := xhttp.NewXHTTPDialer(d.xhttpConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create XHTTP dialer: %v", err)
@@ -296,15 +306,19 @@ func (d *Dialer) dialXHTTP(ctx context.Context, magicNetwork netproxy.MagicNetwo
 	// 如果使用 Post-Quantum Encryption，在 XHTTP 连接上执行握手
 	if d.pqeEncryption != nil {
 		// 这里需要服务器公钥，实际实现中应该从配置获取
-		serverPublicKeys := [][]byte{} // 从配置获取
+		serverPublicKeys := d.nfsKeys
+		if len(serverPublicKeys) == 0 {
+			if cached, ok := defaultNfsKeyCache.Get(d.proxyAddress); ok {
+				serverPublicKeys = cached
+			}
+		}
 		session, err := d.pqeEncryption.Handshake(conn, serverPublicKeys)
 		if err != nil {
 			conn.Close()
 			return nil, fmt.Errorf("post-quantum encryption handshake failed: %v", err)
 		}
-		// 使用会话密钥更新连接
-		// 这里需要根据实际协议实现
-		_ = session // 避免未使用变量警告
+		// 使用会话密钥更新连接（留待后续集成）
+		_ = session
 	}
 
 	return conn, nil

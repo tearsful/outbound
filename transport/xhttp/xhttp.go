@@ -25,6 +25,8 @@ type XHTTPConfig struct {
 	Mode               string            // 模式：auto, stream-one, stream-up, stream-down, packet-up
 	DownloadSettings   *XHTTPConfig      // 下载设置
 	Xmux               *XmuxConfig       // Xmux配置
+    // 当服务端通过响应头返回 NfsPKeys（逗号分隔的 base64url 列表）时回调
+    OnNfsPKeys         func(keys [][]byte)
 }
 
 // XmuxConfig 定义 Xmux 多路复用配置
@@ -141,11 +143,20 @@ func (d *XHTTPDialer) dialStreamMode(ctx context.Context, requestURL string) (ne
 		return nil, fmt.Errorf("failed to execute request: %v", err)
 	}
 
-	// 检查响应状态
+    // 检查响应状态
 	if resp.StatusCode != http.StatusOK {
 		resp.Body.Close()
 		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
+
+    // 尝试从响应头提取服务端 NfsPKeys
+    if d.config != nil && d.config.OnNfsPKeys != nil {
+        if nfs := resp.Header.Get("X-NfsPKeys"); nfs != "" {
+            if keys, err := parseNfsPKeysCSVBase64(nfs); err == nil && len(keys) > 0 {
+                d.config.OnNfsPKeys(keys)
+            }
+        }
+    }
 
 	// 创建流连接
 	return &XHTTPStreamConn{
@@ -336,4 +347,31 @@ func ParseXHTTPConfig(rawURL string) (*XHTTPConfig, error) {
 	}
 
 	return config, nil
+}
+
+// parseNfsPKeysCSVBase64 解析以逗号分隔的 base64url 列表
+func parseNfsPKeysCSVBase64(csv string) ([][]byte, error) {
+    csv = strings.TrimSpace(csv)
+    if csv == "" {
+        return nil, nil
+    }
+    parts := strings.Split(csv, ",")
+    out := make([][]byte, 0, len(parts))
+    for _, p := range parts {
+        p = strings.TrimSpace(p)
+        if p == "" {
+            continue
+        }
+        // 先尝试 base64url
+        if b, err := base64.RawURLEncoding.DecodeString(p); err == nil {
+            out = append(out, b)
+            continue
+        }
+        // 再尝试标准 base64
+        if b, err := base64.StdEncoding.DecodeString(p); err == nil {
+            out = append(out, b)
+            continue
+        }
+    }
+    return out, nil
 }
