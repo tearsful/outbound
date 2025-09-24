@@ -147,10 +147,10 @@ func (auth *MLDSA65Auth) GetPublicKeyBytes() ([]byte, error) {
 	if auth.publicKey == nil {
 		return nil, fmt.Errorf("public key not available")
 	}
-    if pk, ok := auth.publicKey.(*mldsa65.PublicKey); ok {
-        return pk.Bytes(), nil
-    }
-    return nil, fmt.Errorf("unexpected public key type")
+	if pk, ok := auth.publicKey.(*mldsa65.PublicKey); ok {
+		return pk.Bytes(), nil
+	}
+	return nil, fmt.Errorf("unexpected public key type")
 }
 
 // GetPublicKeyBase64 获取公钥的 Base64 编码
@@ -190,11 +190,11 @@ func (auth *MLDSA65Auth) IsValid() bool {
 
 // GenerateKeyPair 生成新的密钥对
 func GenerateMLDSA65KeyPair() (sign.PrivateKey, sign.PublicKey, error) {
-    pub, priv, err := mldsa65.Scheme().GenerateKey()
-    if err != nil {
-        return nil, nil, err
-    }
-    return priv, pub, nil
+	pub, priv, err := mldsa65.Scheme().GenerateKey()
+	if err != nil {
+		return nil, nil, err
+	}
+	return priv, pub, nil
 }
 
 // GenerateKeyPairFromSeed 从种子生成密钥对

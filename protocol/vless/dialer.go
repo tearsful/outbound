@@ -7,7 +7,6 @@ import (
 
 	"github.com/tearsful/outbound/netproxy"
 	"github.com/tearsful/outbound/protocol"
-	"github.com/tearsful/outbound/protocol/vless/encryption"
 	"github.com/tearsful/outbound/protocol/vless/vision"
 	"github.com/tearsful/outbound/protocol/vmess"
 	"github.com/tearsful/outbound/transport/xhttp"
@@ -27,7 +26,7 @@ const (
 	FlowVisionRealityTCP = "xtls-rprx-vision-tcp443"
 
 	// 支持的加密模式
-	EncryptionNone               = "none"
+	// EncryptionNone 定义在 types.go，避免重复声明
 	EncryptionMLKEM768X25519Plus = "mlkem768x25519plus.native.0rtt"
 
 	// 传输类型
@@ -51,8 +50,8 @@ type Dialer struct {
 	fallbacks       []Fallback
 	fallbackManager *FallbackManager
 	// Post-Quantum Encryption 支持
-	pqeEncryption *encryption.PostQuantumEncryption
-	mldsa65Auth   *encryption.MLDSA65Auth
+	pqeEncryption *PostQuantumEncryption
+	mldsa65Auth   *MLDSA65Auth
 	// XHTTP 传输支持
 	transportType string
 	xhttpConfig   *xhttp.XHTTPConfig
@@ -110,21 +109,21 @@ func NewDialer(nextDialer netproxy.Dialer, header protocol.Header) (netproxy.Dia
 	}
 
 	// 初始化 Post-Quantum Encryption（如果支持）
-	var pqeEncryption *encryption.PostQuantumEncryption
+	var pqeEncryption *PostQuantumEncryption
 	if encryptionMode == EncryptionMLKEM768X25519Plus {
-		pqeEncryption, err = encryption.NewPostQuantumEncryption(encryptionMode)
+		pqeEncryption, err = NewPostQuantumEncryption(encryptionMode)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize post-quantum encryption: %v", err)
 		}
 	}
 
 	// 初始化 MLDSA65 认证（如果提供）
-	var mldsa65Auth *encryption.MLDSA65Auth
+	var mldsa65Auth *MLDSA65Auth
 	if header.Feature4 != nil && header.Feature5 != nil {
 		if seed, ok1 := header.Feature4.(string); ok1 {
 			if verifyKey, ok2 := header.Feature5.(string); ok2 {
 				var err error
-				mldsa65Auth, err = encryption.NewMLDSA65AuthFromBase64(seed, verifyKey)
+				mldsa65Auth, err = NewMLDSA65AuthFromBase64(seed, verifyKey)
 				if err != nil {
 					return nil, fmt.Errorf("failed to initialize MLDSA65 auth: %v", err)
 				}
@@ -224,7 +223,7 @@ func (d *Dialer) DialContext(ctx context.Context, network string, addr string) (
 
 	// 如果使用 XHTTP 传输，直接使用 XHTTP 拨号器
 	if d.transportType == TransportXHTTP {
-		return d.dialXHTTP(ctx, magicNetwork, addr)
+		return d.dialXHTTP(ctx, *magicNetwork, addr)
 	}
 
 	switch magicNetwork.Network {
