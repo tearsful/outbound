@@ -247,6 +247,30 @@ func (s *V2Ray) Dialer(option *dialer.ExtraOption, nextDialer netproxy.Dialer) (
 		if err != nil {
 			return nil, nil, err
 		}
+	case "xhttp":
+		// 对于 xhttp，底层仍使用 TCP 拨号；若开启 Reality，则先包一层 Reality
+		if s.TLS == "reality" {
+			sni := s.SNI
+			if sni == "" {
+				sni = s.Host
+			}
+			u := url.URL{
+				Scheme: "reality",
+				Host:   net.JoinHostPort(s.Add, s.Port),
+				RawQuery: url.Values{
+					"sni": []string{sni},
+					"fp":  []string{s.Fingerprint},
+					"sid": []string{s.ShortId},
+					"pbk": []string{s.PublicKey},
+					"spx": []string{s.SpiderX},
+				}.Encode(),
+			}
+			var err error
+			d, err = tls.NewReality(u.String(), d)
+			if err != nil {
+				return nil, nil, err
+			}
+		}
 	default:
 		return nil, nil, fmt.Errorf("%w: network: %v", dialer.UnexpectedFieldErr, s.Net)
 	}
@@ -269,6 +293,17 @@ func (s *V2Ray) Dialer(option *dialer.ExtraOption, nextDialer netproxy.Dialer) (
 	}
 	if s.Pqv != "" {
 		extra["pqv"] = s.Pqv
+	}
+	if strings.ToLower(s.Net) == "xhttp" {
+		if s.Path != "" {
+			extra["xhttp.path"] = s.Path
+		}
+		if s.Mode != "" {
+			extra["xhttp.mode"] = s.Mode
+		}
+		if s.Host != "" {
+			extra["xhttp.headers"] = "Host:" + s.Host
+		}
 	}
 
 	if d, err = protocol.NewDialer(s.Protocol, d, protocol.Header{
