@@ -7,6 +7,7 @@ import (
 
 	"github.com/tearsful/outbound/netproxy"
 	"github.com/tearsful/outbound/protocol"
+    "github.com/tearsful/outbound/protocol/vless/encryption"
 	"github.com/tearsful/outbound/protocol/vless/vision"
 	"github.com/tearsful/outbound/protocol/vmess"
 	"github.com/tearsful/outbound/transport/xhttp"
@@ -49,9 +50,9 @@ type Dialer struct {
 	level           uint32
 	fallbacks       []Fallback
 	fallbackManager *FallbackManager
-	// Post-Quantum Encryption 支持
-	pqeEncryption *PostQuantumEncryption
-	mldsa65Auth   *MLDSA65Auth
+    // Post-Quantum Encryption 支持
+    pqeEncryption *encryption.PostQuantumEncryption
+    mldsa65Auth   *encryption.MLDSA65Auth
 	// XHTTP 传输支持
 	transportType string
 	xhttpConfig   *xhttp.XHTTPConfig
@@ -109,21 +110,21 @@ func NewDialer(nextDialer netproxy.Dialer, header protocol.Header) (netproxy.Dia
 	}
 
 	// 初始化 Post-Quantum Encryption（如果支持）
-	var pqeEncryption *PostQuantumEncryption
+    var pqeEncryption *encryption.PostQuantumEncryption
 	if encryptionMode == EncryptionMLKEM768X25519Plus {
-		pqeEncryption, err = NewPostQuantumEncryption(encryptionMode)
+        pqeEncryption, err = encryption.NewPostQuantumEncryption(encryptionMode)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize post-quantum encryption: %v", err)
 		}
 	}
 
 	// 初始化 MLDSA65 认证（如果提供）
-	var mldsa65Auth *MLDSA65Auth
+    var mldsa65Auth *encryption.MLDSA65Auth
 	if header.Feature4 != nil && header.Feature5 != nil {
 		if seed, ok1 := header.Feature4.(string); ok1 {
 			if verifyKey, ok2 := header.Feature5.(string); ok2 {
 				var err error
-				mldsa65Auth, err = NewMLDSA65AuthFromBase64(seed, verifyKey)
+                mldsa65Auth, err = encryption.NewMLDSA65AuthFromBase64(seed, verifyKey)
 				if err != nil {
 					return nil, fmt.Errorf("failed to initialize MLDSA65 auth: %v", err)
 				}
