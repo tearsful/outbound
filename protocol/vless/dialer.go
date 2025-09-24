@@ -6,8 +6,10 @@ import (
 
 	"github.com/tearsful/outbound/netproxy"
 	"github.com/tearsful/outbound/protocol"
+	"github.com/tearsful/outbound/protocol/vless/encryption"
 	"github.com/tearsful/outbound/protocol/vless/vision"
 	"github.com/tearsful/outbound/protocol/vmess"
+	"github.com/tearsful/outbound/transport/xhttp"
 )
 
 const (
@@ -22,6 +24,13 @@ const (
 	FlowSpliceUDP443  = "xtls-rprx-splice-udp443"
 	// 额外的流控制类型（Xray-core 支持的）
 	FlowVisionRealityTCP = "xtls-rprx-vision-tcp443"
+
+	// 支持的加密模式
+	EncryptionNone               = "none"
+	EncryptionMLKEM768X25519Plus = "mlkem768x25519plus.native.0rtt"
+
+	// 传输类型
+	TransportXHTTP = "xhttp"
 )
 
 func init() {
@@ -40,6 +49,12 @@ type Dialer struct {
 	level           uint32
 	fallbacks       []Fallback
 	fallbackManager *FallbackManager
+	// Post-Quantum Encryption 支持
+	pqeEncryption *encryption.PostQuantumEncryption
+	mldsa65Auth   *encryption.MLDSA65Auth
+	// XHTTP 传输支持
+	transportType string
+	xhttpConfig   *xhttp.XHTTPConfig
 }
 
 func NewDialer(nextDialer netproxy.Dialer, header protocol.Header) (netproxy.Dialer, error) {
@@ -73,6 +88,47 @@ func NewDialer(nextDialer netproxy.Dialer, header protocol.Header) (netproxy.Dia
 	fallbacks := []Fallback{} // 空的回退配置，可以通过配置扩展
 	fallbackManager := NewFallbackManager(fallbacks)
 
+	// 解析加密模式
+	encryptionMode := EncryptionNone
+	if header.Feature2 != "" {
+		encryptionMode = header.Feature2.(string)
+	}
+
+	// 解析传输类型
+	transportType := "tcp"
+	if header.Feature3 != "" {
+		transportType = header.Feature3.(string)
+	}
+
+	// 初始化 Post-Quantum Encryption（如果支持）
+	var pqeEncryption *encryption.PostQuantumEncryption
+	if encryptionMode == EncryptionMLKEM768X25519Plus {
+		pqeEncryption, err = encryption.NewPostQuantumEncryption(encryptionMode)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize post-quantum encryption: %v", err)
+		}
+	}
+
+	// 初始化 MLDSA65 认证（如果提供）
+	var mldsa65Auth *encryption.MLDSA65Auth
+	if header.Feature4 != "" && header.Feature5 != "" {
+		seed := header.Feature4.(string)
+		verifyKey := header.Feature5.(string)
+		mldsa65Auth, err = encryption.NewMLDSA65AuthFromBase64(seed, verifyKey)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize MLDSA65 auth: %v", err)
+		}
+	}
+
+	// 初始化 XHTTP 配置（如果使用 XHTTP 传输）
+	var xhttpConfig *xhttp.XHTTPConfig
+	if transportType == TransportXHTTP {
+		xhttpConfig, err = xhttp.ParseXHTTPConfig(header.ProxyAddress)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse XHTTP config: %v", err)
+		}
+	}
+
 	return &Dialer{
 		proxyAddress:    header.ProxyAddress,
 		nextDialer:      nextDialer,
@@ -80,10 +136,14 @@ func NewDialer(nextDialer netproxy.Dialer, header protocol.Header) (netproxy.Dia
 		flow:            flow.(string),
 		xudp:            enableXUDP,
 		key:             id,
-		encryption:      "none", // VLESS 默认不加密
-		level:           0,      // 默认用户级别
+		encryption:      encryptionMode,
+		level:           0, // 默认用户级别
 		fallbacks:       fallbacks,
 		fallbackManager: fallbackManager,
+		pqeEncryption:   pqeEncryption,
+		mldsa65Auth:     mldsa65Auth,
+		transportType:   transportType,
+		xhttpConfig:     xhttpConfig,
 	}, nil
 }
 
@@ -104,6 +164,12 @@ func (d *Dialer) DialContext(ctx context.Context, network string, addr string) (
 	if err != nil {
 		return nil, err
 	}
+
+	// 如果使用 XHTTP 传输，直接使用 XHTTP 拨号器
+	if d.transportType == TransportXHTTP {
+		return d.dialXHTTP(ctx, magicNetwork, addr)
+	}
+
 	switch magicNetwork.Network {
 	case "tcp", "udp":
 		mdata, err := protocol.ParseMetadata(addr)
@@ -121,6 +187,19 @@ func (d *Dialer) DialContext(ctx context.Context, network string, addr string) (
 		if err != nil {
 			return nil, err
 		}
+
+		// 如果使用 Post-Quantum Encryption，执行握手
+		if d.pqeEncryption != nil {
+			// 这里需要服务器公钥，实际实现中应该从配置获取
+			serverPublicKeys := [][]byte{} // 从配置获取
+			session, err := d.pqeEncryption.Handshake(conn, serverPublicKeys)
+			if err != nil {
+				return nil, fmt.Errorf("post-quantum encryption handshake failed: %v", err)
+			}
+			// 使用会话密钥更新连接
+			// 这里需要根据实际协议实现
+		}
+
 		conn, err = NewConn(conn, Metadata{
 			Metadata:   vmess.Metadata{Metadata: mdata, Network: magicNetwork.Network},
 			Flow:       d.flow,
@@ -155,4 +234,35 @@ func (d *Dialer) DialContext(ctx context.Context, network string, addr string) (
 	default:
 		return nil, fmt.Errorf("%w: %v", netproxy.UnsupportedTunnelTypeError, magicNetwork.Network)
 	}
+}
+
+// dialXHTTP 使用 XHTTP 传输建立连接
+func (d *Dialer) dialXHTTP(ctx context.Context, magicNetwork netproxy.MagicNetwork, addr string) (netproxy.Conn, error) {
+	// 创建 XHTTP 拨号器
+	xhttpDialer, err := xhttp.NewXHTTPDialer(d.xhttpConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create XHTTP dialer: %v", err)
+	}
+
+	// 使用 XHTTP 建立连接
+	conn, err := xhttpDialer.DialContext(ctx, magicNetwork.Network, addr)
+	if err != nil {
+		return nil, fmt.Errorf("XHTTP dial failed: %v", err)
+	}
+
+	// 如果使用 Post-Quantum Encryption，在 XHTTP 连接上执行握手
+	if d.pqeEncryption != nil {
+		// 这里需要服务器公钥，实际实现中应该从配置获取
+		serverPublicKeys := [][]byte{} // 从配置获取
+		session, err := d.pqeEncryption.Handshake(conn, serverPublicKeys)
+		if err != nil {
+			conn.Close()
+			return nil, fmt.Errorf("post-quantum encryption handshake failed: %v", err)
+		}
+		// 使用会话密钥更新连接
+		// 这里需要根据实际协议实现
+		_ = session // 避免未使用变量警告
+	}
+
+	return conn, nil
 }

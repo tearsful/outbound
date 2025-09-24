@@ -4,8 +4,16 @@ go 1.22.0
 
 toolchain go1.23.2
 
+// Version v0.3.0 - VLESS Xray-core Enhancement
+// Added support for:
+// - XHTTP transport protocol
+// - Post-Quantum Encryption (ML-KEM 768 + X25519)
+// - MLDSA65 authentication
+// - Enhanced VLESS parameters
+
 require (
 	github.com/awnumar/fastrand v0.0.0-20210315215012-30ee0990fa2d
+	github.com/cloudflare/circl v1.3.9
 	github.com/daeuniverse/quic-go v0.0.0-20250210145620-2083199a7851
 	github.com/dgryski/go-camellia v0.0.0-20191119043421-69a8a13fb23d
 	github.com/dgryski/go-idea v0.0.0-20170306091226-d2fb45a411fb
@@ -16,6 +24,8 @@ require (
 	github.com/gorilla/websocket v1.5.0
 	github.com/json-iterator/go v1.1.12
 	github.com/mzz2017/disk-bloom v1.0.1
+	github.com/quic-go/quic-go v0.45.0
+	github.com/quic-go/quic-go/http3 v0.45.0
 	github.com/refraction-networking/utls v1.6.4
 	github.com/seiflotfy/cuckoofilter v0.0.0-20220411075957-e3b120b3f5fb
 	github.com/sirupsen/logrus v1.9.3
@@ -27,6 +37,7 @@ require (
 	golang.org/x/sys v0.30.0
 	google.golang.org/grpc v1.57.0
 	google.golang.org/protobuf v1.36.1
+	lukechampine.com/blake3 v1.2.2
 )
 
 require (

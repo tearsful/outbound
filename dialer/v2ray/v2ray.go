@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 
+	jsoniter "github.com/json-iterator/go"
 	"github.com/tearsful/outbound/common"
 	"github.com/tearsful/outbound/dialer"
 	"github.com/tearsful/outbound/netproxy"
@@ -19,7 +20,6 @@ import (
 	"github.com/tearsful/outbound/transport/meek"
 	"github.com/tearsful/outbound/transport/tls"
 	"github.com/tearsful/outbound/transport/ws"
-	jsoniter "github.com/json-iterator/go"
 )
 
 func init() {
@@ -55,6 +55,11 @@ type V2Ray struct {
 	// 动态端口支持
 	DynamicPort string `json:"dynamicPort,omitempty"` // 动态端口配置
 	PortRange   string `json:"portRange,omitempty"`   // 端口范围
+	// Xray-core 新参数支持
+	Mldsa65Seed   string `json:"mldsa65Seed,omitempty"`   // MLDSA65 种子
+	Mldsa65Verify string `json:"mldsa65Verify,omitempty"` // MLDSA65 验证密钥
+	Mode          string `json:"mode,omitempty"`          // XHTTP 模式
+	Pqv           string `json:"pqv,omitempty"`           // Post-Quantum 验证
 }
 
 func NewV2Ray(option *dialer.ExtraOption, nextDialer netproxy.Dialer, link string) (netproxy.Dialer, *dialer.Property, error) {
@@ -292,6 +297,11 @@ func ParseVlessURL(vless string) (data *V2Ray, err error) {
 		Seed:        u.Query().Get("seed"),
 		DynamicPort: u.Query().Get("dynamicPort"),
 		PortRange:   u.Query().Get("portRange"),
+		// Xray-core 新参数支持
+		Mldsa65Seed:   u.Query().Get("mldsa65Seed"),
+		Mldsa65Verify: u.Query().Get("mldsa65Verify"),
+		Mode:          u.Query().Get("mode"),
+		Pqv:           u.Query().Get("pqv"),
 	}
 	if data.Net == "" {
 		data.Net = "tcp"
@@ -441,6 +451,20 @@ func (s *V2Ray) ExportToURL() string {
 		}
 		if s.PortRange != "" {
 			common.SetValue(&query, "portRange", s.PortRange)
+		}
+
+		// 添加 Xray-core 新参数
+		if s.Mldsa65Seed != "" {
+			common.SetValue(&query, "mldsa65Seed", s.Mldsa65Seed)
+		}
+		if s.Mldsa65Verify != "" {
+			common.SetValue(&query, "mldsa65Verify", s.Mldsa65Verify)
+		}
+		if s.Mode != "" {
+			common.SetValue(&query, "mode", s.Mode)
+		}
+		if s.Pqv != "" {
+			common.SetValue(&query, "pqv", s.Pqv)
 		}
 
 		U := url.URL{
