@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+package outbound.protocol.vless;
+option go_package = "github.com/daeuniverse/outbound/protocol/vless";
+
+message Addons {
+  string Flow = 1;
+  bytes Seed = 2;
+}
+
+// VLESS 配置结构，兼容 Xray-core 的完整参数集
+message VlessConfig {
+  // 服务器配置
+  repeated ServerConfig vnext = 1;
+}
+
+message ServerConfig {
+  string address = 1;
+  uint32 port = 2;
+  repeated User users = 3;
+}
+
+message User {
+  string id = 1;
+  string flow = 2;
+  string encryption = 3;
+  uint32 level = 4;
+}
+
+// VLESS 协议设置
+message VlessSettings {
+  string decryption = 1;
+  repeated Fallback fallbacks = 2;
+}
+
+message Fallback {
+  string name = 1;
+  string alpn = 2;
+  string path = 3;
+  string dest = 4;
+  uint32 xver = 5;
+}
