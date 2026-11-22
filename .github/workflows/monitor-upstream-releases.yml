@@ -1,23 +1,16 @@
-#       _
-#    __| | __ _  ___
-#   / _` |/ _` |/ _ \
-#  | (_| | (_| |  __/
-#   \__,_|\__,_|\___|
-# 
-#  Copyright (C) 2023 @daeuniverse <https://github.com/daeuniverse>
-# 
-#  This is a open-source software, liscensed under the AGPL-3.0 License.
-#  See /License for more information.
-
-#  Reference: https://github.com/marketplace/actions/rss-to-issues
+# Copyright (C) 2023 @daeuniverse <https://github.com/daeuniverse>
+# This is open-source software, licensed under the AGPL-3.0 License.
 
 name: Monitor new upstream git release versions
 
 on:
   workflow_dispatch:
-  schedule:
-    # Run this Action every day at 4:00pm UTC
-    - cron: "0 16 * * *"
+  # Disabled: this repo depends on github.com/daeuniverse/quic-go (fork),
+  # not github.com/quic-go/quic-go. Tracking upstream quic-go releases
+  # produced non-actionable issues. Re-enable only after a conscious
+  # migration plan for the daeuniverse fork.
+  # schedule:
+  #   - cron: "0 16 * * *"
 
 env:
   CHARACTER_LIMIT: 1000
@@ -31,16 +24,17 @@ jobs:
     strategy:
       matrix:
         include:
-          - project: quic-go
-            labels: quic-go/quic-go
-            feed: https://github.com/quic-go/quic-go/releases.atom
+          # Track the module we actually import.
+          - project: daeuniverse-quic-go
+            labels: daeuniverse/quic-go
+            feed: https://github.com/daeuniverse/quic-go/commits/master.atom
       fail-fast: false
     steps:
       - uses: git-for-windows/rss-to-issues@v0
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           feed: ${{ matrix.feed }}
-          prefix: "[New ${{ matrix.project }} version]"
+          prefix: "[New ${{ matrix.project }} commit]"
           character-limit: ${{ env.CHARACTER_LIMIT }}
           dry-run: false
           max-age: ${{ env.MAX_AGE }}
