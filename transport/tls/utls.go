@@ -3,6 +3,7 @@ package tls
 import (
 	"crypto/tls"
 	"fmt"
+	"strings"
 
 	utls "github.com/refraction-networking/utls"
 )
@@ -63,9 +64,19 @@ var clientHelloIDMap = map[string]*utls.ClientHelloID{
 }
 
 func nameToUtlsClientHelloID(name string) (*utls.ClientHelloID, error) {
-	clientHelloID, ok := clientHelloIDMap[name]
+	clientHelloID, ok := clientHelloIDMap[strings.ToLower(strings.TrimSpace(name))]
 	if !ok {
 		return nil, fmt.Errorf("unknown uTLS Client Hello ID: %s", name)
 	}
 	return clientHelloID, nil
+}
+
+// UTLSConfigFromTLSConfig converts a stdlib TLS config into a uTLS config.
+func UTLSConfigFromTLSConfig(config *tls.Config) *utls.Config {
+	return uTLSConfigFromTLSConfig(config)
+}
+
+// NameToUTLSClientHelloID resolves a configured uTLS fingerprint name.
+func NameToUTLSClientHelloID(name string) (*utls.ClientHelloID, error) {
+	return nameToUtlsClientHelloID(name)
 }
