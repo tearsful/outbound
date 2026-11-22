@@ -144,3 +144,7 @@ func (d *Dialer) getSession(ctx context.Context, tcpNetwork string) (*session, e
 
 	return s, nil
 }
+
+func (d *Dialer) UnwrapDialer() netproxy.Dialer {
+	return d.nextDialer
+}

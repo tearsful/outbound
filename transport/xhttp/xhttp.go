@@ -684,3 +684,7 @@ func parseNfsPKeysCSVBase64(csv string) ([][]byte, error) {
 	}
 	return out, nil
 }
+
+func (d *XHTTPDialer) UnwrapDialer() netproxy.Dialer {
+	return d.opts.Underlay
+}

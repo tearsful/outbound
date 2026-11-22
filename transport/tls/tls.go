@@ -783,3 +783,7 @@ func (s *Tls) DialContext(ctx context.Context, network, addr string) (c netproxy
 		return nil, fmt.Errorf("%w: %v", netproxy.UnsupportedTunnelTypeError, network)
 	}
 }
+
+func (s *Tls) UnwrapDialer() netproxy.Dialer {
+	return s.dialer
+}

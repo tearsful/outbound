@@ -510,3 +510,7 @@ func getGrpcClientConn(ctx context.Context, tcpDialer netproxy.Dialer, serverNam
 func grpcClientCacheKey(scope, dialerID, address, serverName string, allowInsecure bool, plainText bool, somark uint32, mptcp bool) string {
 	return fmt.Sprintf("%s\x00%s|%s|sni=%s|insecure=%t|h2c=%t|mark=%d|mptcp=%t", scope, dialerID, address, serverName, allowInsecure, plainText, somark, mptcp)
 }
+
+func (d *Dialer) UnwrapDialer() netproxy.Dialer {
+	return d.NextDialer
+}

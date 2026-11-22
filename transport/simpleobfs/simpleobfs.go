@@ -96,3 +96,7 @@ func (s *SimpleObfs) DialContext(ctx context.Context, network, addr string) (c n
 		return nil, fmt.Errorf("%w: %v", netproxy.UnsupportedTunnelTypeError, network)
 	}
 }
+
+func (s *SimpleObfs) UnwrapDialer() netproxy.Dialer {
+	return s.dialer
+}

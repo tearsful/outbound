@@ -401,3 +401,7 @@ func stripProxyAddressQuery(addr string) string {
 	}
 	return addr
 }
+
+func (d *Dialer) UnwrapDialer() netproxy.Dialer {
+	return d.nextDialer
+}

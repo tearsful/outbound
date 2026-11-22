@@ -376,3 +376,7 @@ func randBetween(left int64, right int64) int64 {
 	bigInt, _ := rand.Int(rand.Reader, big.NewInt(right-left))
 	return left + bigInt.Int64()
 }
+
+func (x *Reality) UnwrapDialer() netproxy.Dialer {
+	return x.nextDialer
+}

@@ -212,3 +212,7 @@ func (d *Dialer) DialCmdMsg(ctx context.Context, cmd protocol.MetadataCmd) (c ne
 	}
 	return conn, nil
 }
+
+func (d *Dialer) UnwrapDialer() netproxy.Dialer {
+	return d.nextDialer
+}

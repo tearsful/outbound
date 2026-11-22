@@ -109,3 +109,7 @@ func (d *Dialer) DialUdpTransport(ctx context.Context, magicNetwork string) (net
 	}
 	return &UdpTransportConn{UdpConn: conn.(*UdpConn)}, nil
 }
+
+func (d *Dialer) UnwrapDialer() netproxy.Dialer {
+	return d.nextDialer
+}

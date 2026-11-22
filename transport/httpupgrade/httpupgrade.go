@@ -114,3 +114,7 @@ func (t *Dialer) DialContext(ctx context.Context, network, addr string) (c netpr
 		return nil, fmt.Errorf("%w: %v", netproxy.UnsupportedTunnelTypeError, network)
 	}
 }
+
+func (t *Dialer) UnwrapDialer() netproxy.Dialer {
+	return t.nextDialer
+}

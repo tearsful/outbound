@@ -45,3 +45,7 @@ func (s *Mux) DialContext(ctx context.Context, network, addr string) (c netproxy
 		return nil, fmt.Errorf("%w: %v", netproxy.UnsupportedTunnelTypeError, network)
 	}
 }
+
+func (s *Mux) UnwrapDialer() netproxy.Dialer {
+	return s.NextDialer
+}

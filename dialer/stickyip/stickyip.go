@@ -857,3 +857,7 @@ func logAllIPsFailed(proxyAddr string, lastErr error) {
 		logger.WithFields(fields).Debug("[StickyIP] All proxy IPs failed")
 	}
 }
+
+func (d *StickyIpDialer) UnwrapDialer() netproxy.Dialer {
+	return d.dialer
+}

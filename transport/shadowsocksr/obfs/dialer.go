@@ -70,3 +70,7 @@ func (d *Dialer) DialContext(ctx context.Context, network, addr string) (netprox
 		return nil, fmt.Errorf("%w: %v", netproxy.UnsupportedTunnelTypeError, network)
 	}
 }
+
+func (d *Dialer) UnwrapDialer() netproxy.Dialer {
+	return d.NextDialer
+}
