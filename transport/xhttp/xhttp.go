@@ -32,6 +32,8 @@ type XHTTPConfig struct {
 	// TLS knobs used when the underlay is plain TCP (not Reality/TLS).
 	ServerName    string
 	AllowInsecure bool
+	// UseH3 enables HTTP/3 (QUIC). Incompatible with TCP underlays (e.g. Reality).
+	UseH3 bool
 }
 
 type XmuxConfig struct {
@@ -85,22 +87,18 @@ func NewXHTTPDialerWithOptions(config *XHTTPConfig, opts *DialerOptions) (*XHTTP
 	if opts != nil {
 		d.opts = *opts
 	}
+	tr, err := d.buildRoundTripper()
+	if err != nil {
+		return nil, err
+	}
 	d.client = &http.Client{
 		Timeout:   0, // long-lived streams
-		Transport: d.buildTransport(),
+		Transport: tr,
 	}
 	return d, nil
 }
 
-func (d *XHTTPDialer) buildTransport() *http.Transport {
-	tr := &http.Transport{
-		MaxIdleConns:        100,
-		IdleConnTimeout:     90 * time.Second,
-		DisableCompression:  true,
-		MaxIdleConnsPerHost: 10,
-		ForceAttemptHTTP2:   true,
-	}
-
+func (d *XHTTPDialer) tlsConfig() *tls.Config {
 	sni := d.config.ServerName
 	if sni == "" {
 		if host := d.config.Headers["Host"]; host != "" {
@@ -111,13 +109,47 @@ func (d *XHTTPDialer) buildTransport() *http.Transport {
 			sni = d.config.Host
 		}
 	}
-	tr.TLSClientConfig = &tls.Config{
+	return &tls.Config{
 		ServerName:         sni,
 		InsecureSkipVerify: d.config.AllowInsecure, //nolint:gosec // user-configured
+		NextProtos:         []string{"h2", "http/1.1"},
+	}
+}
+
+func (d *XHTTPDialer) applyXmux(tr *http.Transport) {
+	xmux := d.config.Xmux
+	if xmux == nil || !xmux.Enabled {
+		return
+	}
+	if xmux.Concurrency > 0 {
+		tr.MaxIdleConnsPerHost = int(xmux.Concurrency)
+		tr.MaxConnsPerHost = int(xmux.Concurrency)
+	}
+	if xmux.IdleTimeout > 0 {
+		tr.IdleConnTimeout = time.Duration(xmux.IdleTimeout) * time.Second
+	}
+}
+
+func (d *XHTTPDialer) buildRoundTripper() (http.RoundTripper, error) {
+	if d.config.UseH3 {
+		if d.opts.Underlay != nil {
+			return nil, fmt.Errorf("xhttp: HTTP/3 is incompatible with TCP underlay dialers")
+		}
+		return newH3RoundTripper(d.tlsConfig()), nil
 	}
 
+	tr := &http.Transport{
+		MaxIdleConns:        100,
+		IdleConnTimeout:     90 * time.Second,
+		DisableCompression:  true,
+		MaxIdleConnsPerHost: 10,
+		ForceAttemptHTTP2:   true,
+		TLSClientConfig:     d.tlsConfig(),
+	}
+	d.applyXmux(tr)
+
 	if d.opts.Underlay == nil {
-		return tr
+		return tr, nil
 	}
 
 	dialUnderlay := func(ctx context.Context, addr string) (net.Conn, error) {
@@ -143,7 +175,7 @@ func (d *XHTTPDialer) buildTransport() *http.Transport {
 			return dialUnderlay(ctx, addr)
 		}
 	}
-	return tr
+	return tr, nil
 }
 
 func (d *XHTTPDialer) DialContext(ctx context.Context, network, address string) (netproxy.Conn, error) {
@@ -159,10 +191,13 @@ func (d *XHTTPDialer) DialContext(ctx context.Context, network, address string) 
 	}
 
 	switch strings.ToLower(d.config.Mode) {
-	case "stream-one", "stream-up":
+	case "stream-one":
 		return d.dialBidirectionalStream(ctx, requestURL.String())
+	case "stream-up":
+		return d.dialStreamUp(ctx, requestURL.String())
 	case "stream-down":
-		return d.dialStreamDown(ctx, requestURL.String())
+		// Long-lived GET download + chunked POST uploads.
+		return d.dialPacketMode(ctx, requestURL.String())
 	case "packet-up", "auto":
 		return d.dialPacketMode(ctx, requestURL.String())
 	default:
@@ -252,8 +287,62 @@ func (d *XHTTPDialer) dialBidirectionalStream(ctx context.Context, requestURL st
 	}, nil
 }
 
-func (d *XHTTPDialer) dialStreamDown(ctx context.Context, requestURL string) (netproxy.Conn, error) {
-	return d.dialPacketMode(ctx, requestURL)
+// dialStreamUp uses a dedicated GET download stream plus a POST upload stream
+// (Xray stream-up). Unlike stream-one, the two directions are separate requests.
+func (d *XHTTPDialer) dialStreamUp(ctx context.Context, requestURL string) (netproxy.Conn, error) {
+	getReq, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create stream-up download request: %w", err)
+	}
+	d.applyHeaders(getReq)
+
+	getResp, err := d.client.Do(getReq)
+	if err != nil {
+		return nil, fmt.Errorf("stream-up download failed: %w", err)
+	}
+	if getResp.StatusCode < 200 || getResp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(getResp.Body, 512))
+		_ = getResp.Body.Close()
+		return nil, fmt.Errorf("unexpected stream-up download status %d: %s", getResp.StatusCode, string(body))
+	}
+	d.maybeNotifyNfsKeys(getResp.Header)
+
+	pr, pw := io.Pipe()
+	postReq, err := http.NewRequestWithContext(ctx, http.MethodPost, requestURL, pr)
+	if err != nil {
+		_ = pw.Close()
+		_ = getResp.Body.Close()
+		return nil, fmt.Errorf("failed to create stream-up upload request: %w", err)
+	}
+	d.applyHeaders(postReq)
+	postReq.Header.Set("Content-Type", "application/octet-stream")
+
+	ch := make(chan streamDialResult, 1)
+	go func() {
+		resp, err := d.client.Do(postReq)
+		if err != nil {
+			_ = pr.CloseWithError(err)
+			ch <- streamDialResult{err: err}
+			return
+		}
+		// Upload response body is unused; drain and close.
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1024))
+		_ = resp.Body.Close()
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			err := fmt.Errorf("unexpected stream-up upload status %d", resp.StatusCode)
+			_ = pr.CloseWithError(err)
+			ch <- streamDialResult{err: err}
+			return
+		}
+		ch <- streamDialResult{}
+	}()
+
+	return &xhttpSplitConn{
+		reader: getResp.Body,
+		writer: pw,
+		ready:  ch,
+		ctx:    ctx,
+	}, nil
 }
 
 func (d *XHTTPDialer) dialPacketMode(ctx context.Context, requestURL string) (netproxy.Conn, error) {
@@ -350,6 +439,61 @@ func (c *xhttpStreamConn) SetReadDeadline(t time.Time) error { return nil }
 func (c *xhttpStreamConn) SetWriteDeadline(t time.Time) error {
 	return nil
 }
+
+// xhttpSplitConn is stream-up: Read from GET body, Write to POST pipe.
+type xhttpSplitConn struct {
+	reader io.ReadCloser
+	writer *io.PipeWriter
+	ready  <-chan streamDialResult
+	ctx    context.Context
+
+	uploadOnce sync.Once
+	uploadErr  error
+	closeOnce  sync.Once
+}
+
+func (c *xhttpSplitConn) waitUpload() error {
+	c.uploadOnce.Do(func() {
+		select {
+		case <-c.ctx.Done():
+			c.uploadErr = c.ctx.Err()
+			go func() {
+				res := <-c.ready
+				_ = res
+			}()
+		case res := <-c.ready:
+			c.uploadErr = res.err
+		}
+	})
+	return c.uploadErr
+}
+
+func (c *xhttpSplitConn) Read(b []byte) (int, error) { return c.reader.Read(b) }
+func (c *xhttpSplitConn) Write(b []byte) (int, error) {
+	return c.writer.Write(b)
+}
+func (c *xhttpSplitConn) CloseWrite() error { return c.writer.Close() }
+func (c *xhttpSplitConn) Close() error {
+	var err error
+	c.closeOnce.Do(func() {
+		if e := c.writer.Close(); e != nil {
+			err = e
+		}
+		if e := c.reader.Close(); e != nil && err == nil {
+			err = e
+		}
+		_ = c.waitUpload()
+		if c.uploadErr != nil && err == nil {
+			err = c.uploadErr
+		}
+	})
+	return err
+}
+func (c *xhttpSplitConn) LocalAddr() net.Addr                { return &net.TCPAddr{} }
+func (c *xhttpSplitConn) RemoteAddr() net.Addr               { return &net.TCPAddr{} }
+func (c *xhttpSplitConn) SetDeadline(t time.Time) error      { return nil }
+func (c *xhttpSplitConn) SetReadDeadline(t time.Time) error  { return nil }
+func (c *xhttpSplitConn) SetWriteDeadline(t time.Time) error { return nil }
 
 type xhttpPacketConn struct {
 	download io.ReadCloser
@@ -496,6 +640,23 @@ func ParseXHTTPConfig(rawURL string) (*XHTTPConfig, error) {
 			if kv := strings.SplitN(pair, ":", 2); len(kv) == 2 {
 				config.Headers[strings.TrimSpace(kv[0])] = strings.TrimSpace(kv[1])
 			}
+		}
+	}
+	if h3 := query.Get("h3"); h3 == "1" || strings.EqualFold(h3, "true") {
+		config.UseH3 = true
+	}
+	if alpn := query.Get("alpn"); strings.EqualFold(alpn, "h3") {
+		config.UseH3 = true
+	}
+	if xmux := query.Get("xmux"); xmux == "1" || strings.EqualFold(xmux, "true") {
+		config.Xmux = &XmuxConfig{Enabled: true}
+	}
+	if c := query.Get("xmuxConcurrency"); c != "" {
+		if config.Xmux == nil {
+			config.Xmux = &XmuxConfig{Enabled: true}
+		}
+		if v, err := strconv.ParseInt(c, 10, 32); err == nil {
+			config.Xmux.Concurrency = int32(v)
 		}
 	}
 	return config, nil

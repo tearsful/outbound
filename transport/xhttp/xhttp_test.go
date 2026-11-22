@@ -200,6 +200,100 @@ func (s *stubUnderlay) DialContext(ctx context.Context, network, addr string) (n
 	return stubConn{}, nil
 }
 
+func TestStreamUpSplitDirections(t *testing.T) {
+	var gotUpload []byte
+	var mu sync.Mutex
+
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			w.WriteHeader(http.StatusOK)
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+			_, _ = w.Write([]byte("down-from-get"))
+		case http.MethodPost:
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				t.Errorf("upload read: %v", err)
+			}
+			mu.Lock()
+			gotUpload = append([]byte(nil), body...)
+			mu.Unlock()
+			w.WriteHeader(http.StatusOK)
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+	srv.EnableHTTP2 = true
+	srv.StartTLS()
+	defer srv.Close()
+
+	d, err := NewXHTTPDialer(&XHTTPConfig{
+		Host: strings.TrimPrefix(srv.URL, "https://"),
+		Path: "/",
+		Mode: "stream-up",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	d.client = srv.Client()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	conn, err := d.dialStreamUp(ctx, srv.URL+"/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	if _, err := conn.Write([]byte("up-via-post")); err != nil {
+		t.Fatal(err)
+	}
+	if closer, ok := conn.(interface{ CloseWrite() error }); ok {
+		_ = closer.CloseWrite()
+	}
+
+	buf := make([]byte, 64)
+	n, err := conn.Read(buf)
+	if err != nil && err != io.EOF {
+		t.Fatal(err)
+	}
+	if got := string(buf[:n]); got != "down-from-get" {
+		t.Fatalf("download = %q", got)
+	}
+
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		mu.Lock()
+		ok := bytes.Equal(gotUpload, []byte("up-via-post"))
+		mu.Unlock()
+		if ok {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("upload = %q", gotUpload)
+}
+
+func TestParseXHTTPConfigH3AndXmux(t *testing.T) {
+	cfg, err := ParseXHTTPConfig("example.com:443?h3=1&xmux=1&xmuxConcurrency=4&mode=stream-up")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.UseH3 || cfg.Mode != "stream-up" || cfg.Xmux == nil || !cfg.Xmux.Enabled || cfg.Xmux.Concurrency != 4 {
+		t.Fatalf("cfg=%+v xmux=%+v", cfg, cfg.Xmux)
+	}
+}
+
+func TestH3RejectedWithUnderlay(t *testing.T) {
+	_, err := NewXHTTPDialerWithOptions(&XHTTPConfig{UseH3: true, Path: "/"}, &DialerOptions{
+		Underlay: &stubUnderlay{dialed: make(chan string, 1)},
+	})
+	if err == nil {
+		t.Fatal("expected H3+underlay error")
+	}
+}
+
 func TestXHTTPUsesUnderlayDialer(t *testing.T) {
 	under := &stubUnderlay{dialed: make(chan string, 1)}
 	d, err := NewXHTTPDialerWithOptions(&XHTTPConfig{
