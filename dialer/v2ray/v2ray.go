@@ -125,6 +125,17 @@ func (s *V2Ray) Dialer(option *dialer.ExtraOption, nextDialer netproxy.Dialer) (
 		}
 	}
 
+	flow := strings.TrimSpace(s.Flow)
+	if flow != "" && !strings.EqualFold(flow, "none") {
+		netName := strings.ToLower(s.Net)
+		if netName != "" && netName != "tcp" {
+			return nil, nil, fmt.Errorf("flow %q requires tcp transport, got %q", s.Flow, s.Net)
+		}
+		if !securityUsesTLSOrReality(s.TLS) {
+			return nil, nil, fmt.Errorf("flow %q requires tls or reality", s.Flow)
+		}
+	}
+
 	switch strings.ToLower(s.Net) {
 	case "ws":
 		scheme := "ws"
@@ -204,7 +215,9 @@ func (s *V2Ray) Dialer(option *dialer.ExtraOption, nextDialer netproxy.Dialer) (
 			ServiceName:   serviceName,
 			ServerName:    sni,
 			AllowInsecure: s.AllowInsecure || option.AllowInsecure,
-			MultiMode:     isGRPCMultiMode(mode),
+			// security=none means h2c; tls/xtls/reality use TLS credentials.
+			PlainText: strings.EqualFold(s.TLS, "none") || s.TLS == "",
+			MultiMode: isGRPCMultiMode(mode),
 		}
 	case "http", "http2", "h2":
 		sni := s.SNI

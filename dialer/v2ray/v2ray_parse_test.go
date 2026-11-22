@@ -3,6 +3,8 @@ package v2ray
 import (
 	"strings"
 	"testing"
+
+	"github.com/tearsful/outbound/dialer"
 )
 
 func TestParseVlessURLAllowInsecureAndFlowNone(t *testing.T) {
@@ -76,5 +78,33 @@ func TestIsGRPCMultiMode(t *testing.T) {
 		if isGRPCMultiMode(mode) {
 			t.Fatalf("%q should not enable multi mode", mode)
 		}
+	}
+}
+
+func TestVisionFlowRejectsNonTCP(t *testing.T) {
+	s := &V2Ray{
+		Protocol:   "vless",
+		Add:        "example.com",
+		Port:       "443",
+		ID:         "12203a60-7e88-4930-b778-a9fa80c911e5",
+		Net:        "grpc",
+		TLS:        "tls",
+		Flow:       "xtls-rprx-vision",
+		Encryption: "none",
+	}
+	_, _, err := s.Dialer(&dialer.ExtraOption{}, nil)
+	if err == nil {
+		t.Fatal("expected vision+grpc to be rejected")
+	}
+}
+
+func TestGrpcPlainTextWhenSecurityNone(t *testing.T) {
+	s, err := ParseVlessURL("vless://12203a60-7e88-4930-b778-a9fa80c911e5@example.com:443?type=grpc&security=none&serviceName=GunService&encryption=none#g")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.EqualFold(s.TLS, "none") && s.TLS != "" {
+		// Parse may normalize empty; accept none/empty as plaintext intent.
+		t.Fatalf("TLS = %q, want none/empty", s.TLS)
 	}
 }

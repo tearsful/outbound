@@ -90,16 +90,24 @@ func NewXHTTPDialer(config *XHTTPConfig) (*XHTTPDialer, error) {
 
 // DialContext 实现 netproxy.Dialer 接口
 func (d *XHTTPDialer) DialContext(ctx context.Context, network, address string) (netproxy.Conn, error) {
-	// 解析地址
-	host, port, err := net.SplitHostPort(address)
-	if err != nil {
-		return nil, fmt.Errorf("invalid address: %v", err)
+	hostPort := address
+	if d.config != nil && d.config.Host != "" {
+		hostPort = d.config.Host
+		if _, _, err := net.SplitHostPort(hostPort); err != nil {
+			// Host may be hostname without port; keep caller address port if present.
+			if _, port, splitErr := net.SplitHostPort(address); splitErr == nil {
+				hostPort = net.JoinHostPort(d.config.Host, port)
+			}
+		}
+	}
+	if _, _, err := net.SplitHostPort(hostPort); err != nil {
+		return nil, fmt.Errorf("invalid xhttp host/address: %v", err)
 	}
 
-	// 构建请求 URL
+	// 构建请求 URL（连到代理入口，而不是最终目标地址）
 	requestURL := &url.URL{
-		Scheme: "https", // XHTTP 通常使用 HTTPS
-		Host:   net.JoinHostPort(host, port),
+		Scheme: "https",
+		Host:   hostPort,
 		Path:   d.config.Path,
 	}
 
@@ -115,7 +123,7 @@ func (d *XHTTPDialer) DialContext(ctx context.Context, network, address string) 
 	// 根据模式创建连接
 	switch d.config.Mode {
 	case "stream-one", "stream-up", "stream-down":
-		return d.dialStreamMode(ctx, requestURL.String())
+		return nil, fmt.Errorf("xhttp mode %q is not implemented for bidirectional proxying", d.config.Mode)
 	case "packet-up", "auto":
 		return d.dialPacketMode(ctx, requestURL.String())
 	default:

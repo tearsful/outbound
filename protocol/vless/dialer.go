@@ -304,12 +304,19 @@ func (d *Dialer) DialContext(ctx context.Context, network string, addr string) (
 	}
 }
 
-// dialXHTTP 使用 XHTTP 传输建立连接
+// dialXHTTP 使用 XHTTP 传输建立连接，并套上 VLESS framing。
 func (d *Dialer) dialXHTTP(ctx context.Context, magicNetwork netproxy.MagicNetwork, addr string) (netproxy.Conn, error) {
-	// 创建 XHTTP 拨号器
+	mdata, err := protocol.ParseMetadata(addr)
+	if err != nil {
+		return nil, err
+	}
+	mdata.IsClient = d.metadata.IsClient
+
 	if d.xhttpConfig != nil {
 		cfg := d.xhttpConfig
-		// 注入 NfsPKeys 回调：写入缓存供后续 PQ/0-RTT 复用
+		if cfg.Host == "" {
+			cfg.Host = d.proxyAddress
+		}
 		cfg.OnNfsPKeys = func(keys [][]byte) {
 			if len(keys) == 0 {
 				return
@@ -322,15 +329,13 @@ func (d *Dialer) dialXHTTP(ctx context.Context, magicNetwork netproxy.MagicNetwo
 		return nil, fmt.Errorf("failed to create XHTTP dialer: %v", err)
 	}
 
-	// 使用 XHTTP 建立连接
-	conn, err := xhttpDialer.DialContext(ctx, magicNetwork.Network, addr)
+	// Always dial the proxy endpoint; VLESS metadata carries the target.
+	conn, err := xhttpDialer.DialContext(ctx, magicNetwork.Network, d.proxyAddress)
 	if err != nil {
 		return nil, fmt.Errorf("XHTTP dial failed: %v", err)
 	}
 
-	// 如果使用 Post-Quantum Encryption，在 XHTTP 连接上执行握手
 	if d.pqeEncryption != nil {
-		// 这里需要服务器公钥，实际实现中应该从配置获取
 		serverPublicKeys := d.nfsKeys
 		if len(serverPublicKeys) == 0 {
 			if cached, ok := defaultNfsKeyCache.Get(d.proxyAddress); ok {
@@ -342,9 +347,18 @@ func (d *Dialer) dialXHTTP(ctx context.Context, magicNetwork netproxy.MagicNetwo
 			conn.Close()
 			return nil, fmt.Errorf("post-quantum encryption handshake failed: %v", err)
 		}
-		// 使用会话密钥更新连接（留待后续集成）
 		_ = session
 	}
 
+	conn, err = NewConn(conn, Metadata{
+		Metadata:   vmess.Metadata{Metadata: mdata, Network: magicNetwork.Network},
+		Flow:       d.flow,
+		Mux:        magicNetwork.Network == "udp" && d.xudp,
+		Encryption: d.encryption,
+		Level:      d.level,
+	}, d.key)
+	if err != nil {
+		return nil, err
+	}
 	return conn, nil
 }

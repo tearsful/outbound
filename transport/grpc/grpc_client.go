@@ -19,6 +19,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/status"
 )
@@ -322,6 +323,8 @@ type Dialer struct {
 	ServiceName   string
 	ServerName    string
 	AllowInsecure bool
+	// PlainText uses h2c (no TLS). When false, gRPC dials with TLS.
+	PlainText bool
 	// MultiMode mirrors xray-core gRPC mode=multi/guna: reuse one HTTP/2
 	// connection with concurrent Tun streams instead of gun-style singles.
 	MultiMode bool
@@ -336,7 +339,7 @@ func (d *Dialer) DialContext(ctx context.Context, network string, address string
 		return nil, fmt.Errorf("grpc: next dialer is nil")
 	}
 
-	meta, releaseCC, err := getGrpcClientConn(ctx, d.NextDialer, d.ServerName, address, d.AllowInsecure, d.MultiMode, magicNetwork.Mark, magicNetwork.Mptcp)
+	meta, releaseCC, err := getGrpcClientConn(ctx, d.NextDialer, d.ServerName, address, d.AllowInsecure, d.PlainText, d.MultiMode, magicNetwork.Mark, magicNetwork.Mptcp)
 	if err != nil {
 		releaseCC()
 		return nil, err
@@ -395,14 +398,23 @@ func acquireGrpcClientConn(cacheKey string, multiMode bool, create grpcConnFacto
 	return meta, func() {}, nil
 }
 
-func getGrpcClientConn(ctx context.Context, tcpDialer netproxy.Dialer, serverName string, address string, allowInsecure bool, multiMode bool, somark uint32, mptcp bool) (*clientConnMeta, ccCanceller, error) {
-	roots, err := cert.GetSystemCertPool()
-	if err != nil {
-		return nil, func() {}, fmt.Errorf("failed to get system certificate pool")
+func getGrpcClientConn(ctx context.Context, tcpDialer netproxy.Dialer, serverName string, address string, allowInsecure bool, plainText bool, multiMode bool, somark uint32, mptcp bool) (*clientConnMeta, ccCanceller, error) {
+	var transportCreds grpc.DialOption
+	if plainText {
+		transportCreds = grpc.WithTransportCredentials(insecure.NewCredentials())
+	} else {
+		roots, err := cert.GetSystemCertPool()
+		if err != nil {
+			return nil, func() {}, fmt.Errorf("failed to get system certificate pool")
+		}
+		transportCreds = grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{
+			ServerName:         serverName,
+			RootCAs:            roots,
+			InsecureSkipVerify: allowInsecure,
+		}))
 	}
-	certOption := grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{ServerName: serverName, RootCAs: roots, InsecureSkipVerify: allowInsecure}))
 
-	cacheKey := grpcClientCacheKey(fmt.Sprintf("%p", tcpDialer), address, serverName, allowInsecure, somark, mptcp)
+	cacheKey := grpcClientCacheKey(fmt.Sprintf("%p", tcpDialer), address, serverName, allowInsecure, plainText, somark, mptcp)
 
 	keepAlive := keepalive.ClientParameters{
 		Time:                30 * time.Second,
@@ -420,7 +432,7 @@ func getGrpcClientConn(ctx context.Context, tcpDialer netproxy.Dialer, serverNam
 
 	create := func() (*grpc.ClientConn, error) {
 		return grpc.DialContext(ctx, address,
-			certOption,
+			transportCreds,
 			grpc.WithContextDialer(func(ctxGrpc context.Context, s string) (net.Conn, error) {
 				tcpNetwork := netproxy.MagicNetwork{
 					Network: "tcp",
@@ -460,6 +472,6 @@ func getGrpcClientConn(ctx context.Context, tcpDialer netproxy.Dialer, serverNam
 
 // grpcClientCacheKey keeps dialer identity + TLS/socket policy in the key so
 // insecure/secure, SNI, mark, or chained dialers never share a ClientConn.
-func grpcClientCacheKey(dialerID, address, serverName string, allowInsecure bool, somark uint32, mptcp bool) string {
-	return fmt.Sprintf("%s|%s|sni=%s|insecure=%t|mark=%d|mptcp=%t", dialerID, address, serverName, allowInsecure, somark, mptcp)
+func grpcClientCacheKey(dialerID, address, serverName string, allowInsecure bool, plainText bool, somark uint32, mptcp bool) string {
+	return fmt.Sprintf("%s|%s|sni=%s|insecure=%t|h2c=%t|mark=%d|mptcp=%t", dialerID, address, serverName, allowInsecure, plainText, somark, mptcp)
 }
