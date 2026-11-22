@@ -227,12 +227,15 @@ func ParseSip003Opts(opts string) Sip003Opts {
 	var sip003Opts Sip003Opts
 	fields := strings.Split(opts, ";")
 	for i := range fields {
-		a := strings.Split(fields[i], "=")
+		if fields[i] == "" {
+			continue
+		}
+		a := strings.SplitN(fields[i], "=", 2)
 		if len(a) == 1 {
-			// to avoid panic
+			// to avoid panic on bare keys like "tls"
 			a = append(a, "")
 		}
-		switch a[0] {
+		switch strings.ToLower(a[0]) {
 		case "tls":
 			sip003Opts.Tls = "tls"
 		case "obfs", "mode":
@@ -251,13 +254,19 @@ func ParseSip003Opts(opts string) Sip003Opts {
 func ParseSip003(plugin string) Sip003 {
 	var sip003 Sip003
 	fields := strings.SplitN(plugin, ";", 2)
-	switch fields[0] {
+	opts := ""
+	if len(fields) == 2 {
+		opts = fields[1]
+	}
+	switch strings.ToLower(fields[0]) {
 	case "obfs-local", "simpleobfs":
 		sip003.Name = "simple-obfs"
+	case "shadowtls", "shadow-tls", "sstls":
+		sip003.Name = "shadow-tls"
 	default:
 		sip003.Name = fields[0]
 	}
-	sip003.Opts = ParseSip003Opts(fields[1])
+	sip003.Opts = ParseSip003Opts(opts)
 	return sip003
 }
 
