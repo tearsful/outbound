@@ -89,6 +89,19 @@ func NewV2Ray(option *dialer.ExtraOption, nextDialer netproxy.Dialer, link strin
 	return s.Dialer(option, nextDialer)
 }
 
+func securityUsesTLS(security string) bool {
+	switch strings.ToLower(security) {
+	case "tls", "xtls":
+		return true
+	default:
+		return false
+	}
+}
+
+func securityUsesTLSOrReality(security string) bool {
+	return securityUsesTLS(security) || strings.EqualFold(security, "reality")
+}
+
 func (s *V2Ray) Dialer(option *dialer.ExtraOption, nextDialer netproxy.Dialer) (npd netproxy.Dialer, property *dialer.Property, err error) {
 	d := nextDialer
 	switch s.Protocol {
@@ -106,7 +119,7 @@ func (s *V2Ray) Dialer(option *dialer.ExtraOption, nextDialer netproxy.Dialer) (
 	switch strings.ToLower(s.Net) {
 	case "ws":
 		scheme := "ws"
-		if s.TLS == "tls" || s.TLS == "reality" {
+		if securityUsesTLSOrReality(s.TLS) {
 			scheme = "wss"
 		}
 		sni := s.SNI
@@ -128,7 +141,7 @@ func (s *V2Ray) Dialer(option *dialer.ExtraOption, nextDialer netproxy.Dialer) (
 			return nil, nil, err
 		}
 	case "tcp":
-		if s.TLS == "tls" || s.TLS == "reality" {
+		if securityUsesTLSOrReality(s.TLS) {
 			sni := s.SNI
 			if sni == "" {
 				sni = s.Host
@@ -147,6 +160,7 @@ func (s *V2Ray) Dialer(option *dialer.ExtraOption, nextDialer netproxy.Dialer) (
 				}
 				d, err = tls.NewReality(u.String(), d)
 			} else {
+				// tls and legacy xtls both need a real TLS handshake layer.
 				u := url.URL{
 					Scheme: option.TlsImplementation,
 					Host:   net.JoinHostPort(s.Add, s.Port),
@@ -175,11 +189,13 @@ func (s *V2Ray) Dialer(option *dialer.ExtraOption, nextDialer netproxy.Dialer) (
 		if serviceName == "" {
 			serviceName = "GunService"
 		}
+		mode := strings.ToLower(s.Mode)
 		d = &grpc.Dialer{
 			NextDialer:    d,
 			ServiceName:   serviceName,
 			ServerName:    sni,
 			AllowInsecure: s.AllowInsecure || option.AllowInsecure,
+			MultiMode:     mode == "multi" || mode == "guna",
 		}
 	case "http", "http2", "h2":
 		sni := s.SNI
@@ -187,7 +203,7 @@ func (s *V2Ray) Dialer(option *dialer.ExtraOption, nextDialer netproxy.Dialer) (
 			sni = s.Add
 		}
 		scheme := "http"
-		if s.TLS == "tls" {
+		if securityUsesTLS(s.TLS) {
 			scheme = "https"
 		}
 		u := url.URL{
@@ -209,7 +225,7 @@ func (s *V2Ray) Dialer(option *dialer.ExtraOption, nextDialer netproxy.Dialer) (
 			return nil, nil, err
 		}
 	case "meek":
-		if strings.HasPrefix(s.Path, "https://") && s.TLS != "tls" && s.TLS != "utls" {
+		if strings.HasPrefix(s.Path, "https://") && !securityUsesTLS(s.TLS) && s.TLS != "utls" {
 			return nil, nil, fmt.Errorf("%w: meek: tls should be enabled", dialer.InvalidParameterErr)
 		}
 
@@ -230,7 +246,7 @@ func (s *V2Ray) Dialer(option *dialer.ExtraOption, nextDialer netproxy.Dialer) (
 		}
 	case "httpupgrade":
 		scheme := "http"
-		if s.TLS == "tls" {
+		if securityUsesTLS(s.TLS) {
 			scheme = "https"
 		}
 		u := url.URL{
@@ -334,45 +350,46 @@ func ParseVlessURL(vless string) (data *V2Ray, err error) {
 	if err != nil {
 		return nil, err
 	}
+	query := u.Query()
 	data = &V2Ray{
 		Ps:            u.Fragment,
 		Add:           u.Hostname(),
 		Port:          u.Port(),
 		ID:            u.User.String(),
-		Net:           u.Query().Get("type"),
-		Type:          u.Query().Get("headerType"),
-		Host:          u.Query().Get("host"),
-		SNI:           u.Query().Get("sni"),
-		Path:          u.Query().Get("path"),
-		TLS:           u.Query().Get("security"),
-		Flow:          u.Query().Get("flow"),
-		Alpn:          u.Query().Get("alpn"),
-		AllowInsecure: false,
-		Fingerprint:   u.Query().Get("fp"),
-		PublicKey:     u.Query().Get("pbk"),
-		ShortId:       u.Query().Get("sid"),
-		SpiderX:       u.Query().Get("spx"),
+		Net:           query.Get("type"),
+		Type:          query.Get("headerType"),
+		Host:          query.Get("host"),
+		SNI:           query.Get("sni"),
+		Path:          query.Get("path"),
+		TLS:           query.Get("security"),
+		Flow:          query.Get("flow"),
+		Alpn:          query.Get("alpn"),
+		AllowInsecure: common.QueryBoolTrue(query, "allowInsecure", "allow_insecure", "allowinsecure", "skipVerify"),
+		Fingerprint:   query.Get("fp"),
+		PublicKey:     query.Get("pbk"),
+		ShortId:       query.Get("sid"),
+		SpiderX:       query.Get("spx"),
 		V:             "2",
 		Protocol:      "vless",
 		// 新增 VLESS 参数解析
-		Encryption:  u.Query().Get("encryption"),
-		Seed:        u.Query().Get("seed"),
-		DynamicPort: u.Query().Get("dynamicPort"),
-		PortRange:   u.Query().Get("portRange"),
+		Encryption:  query.Get("encryption"),
+		Seed:        query.Get("seed"),
+		DynamicPort: query.Get("dynamicPort"),
+		PortRange:   query.Get("portRange"),
 		// Xray-core 新参数支持
-		Mldsa65Seed:   u.Query().Get("mldsa65Seed"),
-		Mldsa65Verify: u.Query().Get("mldsa65Verify"),
-		Mode:          u.Query().Get("mode"),
-		Pqv:           u.Query().Get("pqv"),
+		Mldsa65Seed:   query.Get("mldsa65Seed"),
+		Mldsa65Verify: query.Get("mldsa65Verify"),
+		Mode:          query.Get("mode"),
+		Pqv:           query.Get("pqv"),
 	}
 	if data.Net == "" {
 		data.Net = "tcp"
 	}
 	if data.Net == "grpc" {
-		data.Path = u.Query().Get("serviceName")
+		data.Path = query.Get("serviceName")
 	}
 	if data.Net == "meek" {
-		data.Path = u.Query().Get("url")
+		data.Path = query.Get("url")
 	}
 	if data.Type == "" {
 		data.Type = "none"
@@ -380,8 +397,12 @@ func ParseVlessURL(vless string) (data *V2Ray, err error) {
 	if data.TLS == "" {
 		data.TLS = "none"
 	}
+	// Clients sometimes serialize empty flow as "none"; dialer only accepts "" or real flow ids.
+	if strings.EqualFold(data.Flow, "none") {
+		data.Flow = ""
+	}
 	if data.Type == "mkcp" || data.Type == "kcp" {
-		data.Path = u.Query().Get("seed")
+		data.Path = query.Get("seed")
 	}
 	return data, nil
 }
@@ -485,6 +506,9 @@ func (s *V2Ray) ExportToURL() string {
 			common.SetValue(&query, "path", s.Path)
 		case "grpc":
 			common.SetValue(&query, "serviceName", s.Path)
+			if s.Mode != "" && s.Mode != "gun" {
+				common.SetValue(&query, "mode", s.Mode)
+			}
 		case "meek":
 			common.SetValue(&query, "url", s.Host)
 		}
@@ -499,12 +523,19 @@ func (s *V2Ray) ExportToURL() string {
 		if s.TLS != "none" {
 			common.SetValue(&query, "sni", s.SNI)
 			common.SetValue(&query, "alpn", s.Alpn)
-			common.SetValue(&query, "flow", s.Flow)
+			if s.Flow != "" && !strings.EqualFold(s.Flow, "none") {
+				common.SetValue(&query, "flow", s.Flow)
+			}
 			common.SetValue(&query, "fp", s.Fingerprint)
+		}
+		if s.AllowInsecure {
+			common.SetValue(&query, "allowInsecure", "1")
 		}
 
 		// 添加 VLESS 特定参数
-		common.SetValue(&query, "encryption", s.Encryption)
+		if s.Encryption != "" && s.Encryption != "none" {
+			common.SetValue(&query, "encryption", s.Encryption)
+		}
 		if s.Seed != "" {
 			common.SetValue(&query, "seed", s.Seed)
 		}
@@ -522,7 +553,7 @@ func (s *V2Ray) ExportToURL() string {
 		if s.Mldsa65Verify != "" {
 			common.SetValue(&query, "mldsa65Verify", s.Mldsa65Verify)
 		}
-		if s.Mode != "" {
+		if s.Net != "grpc" && s.Mode != "" {
 			common.SetValue(&query, "mode", s.Mode)
 		}
 		if s.Pqv != "" {

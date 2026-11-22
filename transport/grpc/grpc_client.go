@@ -311,6 +311,9 @@ type Dialer struct {
 	ServiceName   string
 	ServerName    string
 	AllowInsecure bool
+	// MultiMode mirrors xray-core gRPC mode=multi/guna: reuse one HTTP/2
+	// connection with concurrent Tun streams instead of gun-style singles.
+	MultiMode bool
 }
 
 func (d *Dialer) DialContext(ctx context.Context, network string, address string) (netproxy.Conn, error) {
@@ -318,7 +321,7 @@ func (d *Dialer) DialContext(ctx context.Context, network string, address string
 	if err != nil {
 		return nil, err
 	}
-	meta, cancel, err := getGrpcClientConn(ctx, d.NextDialer, d.ServerName, address, d.AllowInsecure, magicNetwork.Mark, magicNetwork.Mptcp)
+	meta, cancel, err := getGrpcClientConn(ctx, d.NextDialer, d.ServerName, address, d.AllowInsecure, d.MultiMode, magicNetwork.Mark, magicNetwork.Mptcp)
 	if err != nil {
 		cancel()
 		return nil, err
@@ -340,13 +343,17 @@ func (d *Dialer) DialContext(ctx context.Context, network string, address string
 	return NewClientConn(tun, streamCloser), nil
 }
 
-func getGrpcClientConn(ctx context.Context, tcpDialer netproxy.Dialer, serverName string, address string, allowInsecure bool, somark uint32, mptcp bool) (*clientConnMeta, ccCanceller, error) {
-	// allowInsecure?
+func getGrpcClientConn(ctx context.Context, tcpDialer netproxy.Dialer, serverName string, address string, allowInsecure bool, multiMode bool, somark uint32, mptcp bool) (*clientConnMeta, ccCanceller, error) {
 	roots, err := cert.GetSystemCertPool()
 	if err != nil {
 		return nil, func() {}, fmt.Errorf("failed to get system certificate pool")
 	}
 	certOption := grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{ServerName: serverName, RootCAs: roots, InsecureSkipVerify: allowInsecure}))
+
+	cacheKey := address
+	if multiMode {
+		cacheKey = address + "|multi"
+	}
 
 	globalCCAccess.Lock()
 	if globalCCMap == nil {
@@ -357,13 +364,15 @@ func getGrpcClientConn(ctx context.Context, tcpDialer netproxy.Dialer, serverNam
 	canceller := func() {
 		globalCCAccess.Lock()
 		defer globalCCAccess.Unlock()
-		globalCCMap[address].cc.Close()
-		delete(globalCCMap, address)
+		if meta, ok := globalCCMap[cacheKey]; ok {
+			meta.cc.Close()
+			delete(globalCCMap, cacheKey)
+		}
 	}
 
 	// TODO Should support chain proxy to the same destination
 	globalCCAccess.Lock()
-	if meta, found := globalCCMap[address]; found && meta.cc.GetState() != connectivity.Shutdown {
+	if meta, found := globalCCMap[cacheKey]; found && meta.cc.GetState() != connectivity.Shutdown {
 		globalCCAccess.Unlock()
 		return meta, canceller, nil
 	}
@@ -371,6 +380,21 @@ func getGrpcClientConn(ctx context.Context, tcpDialer netproxy.Dialer, serverNam
 	meta := &clientConnMeta{
 		cc: nil,
 	}
+
+	keepAlive := keepalive.ClientParameters{
+		Time:                30 * time.Second,
+		Timeout:             10 * time.Second,
+		PermitWithoutStream: true,
+	}
+	windowSize := int32(65535)
+	if multiMode {
+		// Align with xray-core multi: keep HTTP/2 warm for concurrent Tun streams.
+		keepAlive.Time = 10 * time.Second
+		keepAlive.Timeout = 20 * time.Second
+		keepAlive.PermitWithoutStream = true
+		windowSize = 1 << 20 // 1 MiB
+	}
+
 	meta.cc, err = grpc.DialContext(ctx, address,
 		certOption,
 		grpc.WithContextDialer(func(ctxGrpc context.Context, s string) (net.Conn, error) {
@@ -396,17 +420,20 @@ func getGrpcClientConn(ctx context.Context, tcpDialer netproxy.Dialer, serverNam
 				MaxDelay:   19 * time.Second,
 			},
 			MinConnectTimeout: 5 * time.Second,
-		}), grpc.WithKeepaliveParams(keepalive.ClientParameters{
-			Time:                30 * time.Second,
-			Timeout:             10 * time.Second,
-			PermitWithoutStream: true,
 		}),
+		grpc.WithKeepaliveParams(keepAlive),
+		grpc.WithDefaultCallOptions(
+			grpc.MaxCallRecvMsgSize(4*1024*1024),
+			grpc.MaxCallSendMsgSize(4*1024*1024),
+		),
+		grpc.WithInitialWindowSize(windowSize),
+		grpc.WithInitialConnWindowSize(windowSize),
 	)
 	if err != nil {
 		return nil, canceller, err
 	}
 	globalCCAccess.Lock()
-	globalCCMap[address] = meta
+	globalCCMap[cacheKey] = meta
 	globalCCAccess.Unlock()
 	return meta, canceller, err
 }

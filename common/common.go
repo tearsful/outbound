@@ -100,6 +100,19 @@ func BoolToString(b bool) string {
 	}
 }
 
+// QueryBoolTrue reports whether any of the given query keys is a truthy flag.
+// Accepts 1/true/yes/y (case-insensitive).
+func QueryBoolTrue(query url.Values, keys ...string) bool {
+	for _, key := range keys {
+		v := strings.TrimSpace(strings.ToLower(query.Get(key)))
+		switch v {
+		case "1", "true", "yes", "y":
+			return true
+		}
+	}
+	return false
+}
+
 func GenerateCertChainHash(rawCerts [][]byte) (chainHash []byte) {
 	for _, cert := range rawCerts {
 		certHash := sha256.Sum256(cert)
