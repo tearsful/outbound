@@ -2,7 +2,7 @@ package dialer
 
 import (
 	"github.com/tearsful/outbound/netproxy"
-	softwindDirect "github.com/tearsful/outbound/protocol/direct"
+	"github.com/tearsful/outbound/protocol/direct"
 )
 
 func NewDirectDialer(option *ExtraOption, fullcone bool) (netproxy.Dialer, *Property) {
@@ -13,8 +13,8 @@ func NewDirectDialer(option *ExtraOption, fullcone bool) (netproxy.Dialer, *Prop
 		Link:     "",
 	}
 	if fullcone {
-		return softwindDirect.FullconeDirect, property
+		return direct.FullconeDirect, property
 	} else {
-		return softwindDirect.SymmetricDirect, property
+		return direct.SymmetricDirect, property
 	}
 }

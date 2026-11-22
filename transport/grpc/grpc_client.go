@@ -350,10 +350,7 @@ func getGrpcClientConn(ctx context.Context, tcpDialer netproxy.Dialer, serverNam
 	}
 	certOption := grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{ServerName: serverName, RootCAs: roots, InsecureSkipVerify: allowInsecure}))
 
-	cacheKey := address
-	if multiMode {
-		cacheKey = address + "|multi"
-	}
+	cacheKey := grpcClientCacheKey(address, serverName, allowInsecure, multiMode)
 
 	globalCCAccess.Lock()
 	if globalCCMap == nil {
@@ -436,4 +433,14 @@ func getGrpcClientConn(ctx context.Context, tcpDialer netproxy.Dialer, serverNam
 	globalCCMap[cacheKey] = meta
 	globalCCAccess.Unlock()
 	return meta, canceller, err
+}
+
+// grpcClientCacheKey keeps TLS identity and multi-mode in the key so insecure
+// and secure dials (or different SNIs) never share a ClientConn.
+func grpcClientCacheKey(address, serverName string, allowInsecure, multiMode bool) string {
+	cacheKey := fmt.Sprintf("%s|sni=%s|insecure=%t", address, serverName, allowInsecure)
+	if multiMode {
+		cacheKey += "|multi"
+	}
+	return cacheKey
 }
