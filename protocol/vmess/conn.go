@@ -510,3 +510,7 @@ func (c *Conn) EncryptRespHeaderFromPool(header []byte) (b []byte, err error) {
 
 	return buf, nil
 }
+
+func (c *Conn) WriteDeadlineClosesSession() bool {
+	return netproxy.WriteDeadlineClosesSession(c.Conn)
+}

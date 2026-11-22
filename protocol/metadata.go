@@ -60,13 +60,23 @@ const (
 	maxDomainIpCacheEntries = 64
 )
 
+// datapathResolverSlot is one installed resolver generation. Reload installs a
+// new generation; Close of an older plane must not wipe a newer one.
+type datapathResolverSlot struct {
+	gen     uint64
+	resolve func(ctx context.Context, host string) (netip.Addr, error)
+}
+
 // datapathResolver holds the installed resolver.
 //
 // It is written while an embedder builds or rotates its resolver -- dae does
 // this once per generation, i.e. on every reload -- while datagram read loops
 // may already be running, so the read path goes through an atomic instead of a
 // bare package variable.
-var datapathResolver atomic.Pointer[func(ctx context.Context, host string) (netip.Addr, error)]
+var (
+	datapathResolver    atomic.Pointer[datapathResolverSlot]
+	datapathResolverGen atomic.Uint64
+)
 
 // SetDatapathResolver installs the resolver used for peer-supplied hostnames on
 // the datagram read path, or restores the process resolver with nil.
@@ -75,18 +85,40 @@ var datapathResolver atomic.Pointer[func(ctx context.Context, host string) (neti
 // routing-rewritten one: the result is used verbatim as the source address of
 // the datagram delivered to the client, and full-cone NAT requires that address
 // to be the real remote source.
-func SetDatapathResolver(resolve func(ctx context.Context, host string) (netip.Addr, error)) {
+//
+// The returned generation id should be passed to ClearDatapathResolver on
+// teardown so a stale Close cannot clear a newer generation's resolver.
+func SetDatapathResolver(resolve func(ctx context.Context, host string) (netip.Addr, error)) uint64 {
 	if resolve == nil {
 		datapathResolver.Store(nil)
+		return 0
+	}
+	gen := datapathResolverGen.Add(1)
+	datapathResolver.Store(&datapathResolverSlot{gen: gen, resolve: resolve})
+	return gen
+}
+
+// ClearDatapathResolver removes the installed resolver only when gen is still
+// the current generation. A zero gen is ignored.
+func ClearDatapathResolver(gen uint64) {
+	if gen == 0 {
 		return
 	}
-	datapathResolver.Store(&resolve)
+	for {
+		cur := datapathResolver.Load()
+		if cur == nil || cur.gen != gen {
+			return
+		}
+		if datapathResolver.CompareAndSwap(cur, nil) {
+			return
+		}
+	}
 }
 
 // installedDatapathResolver returns the installed resolver, or nil.
 func installedDatapathResolver() func(context.Context, string) (netip.Addr, error) {
 	if p := datapathResolver.Load(); p != nil {
-		return *p
+		return p.resolve
 	}
 	return nil
 }

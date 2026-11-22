@@ -154,3 +154,7 @@ func (c *UdpTransportConn) ReadFrom(b []byte) (n int, from netip.AddrPort, err e
 	n, err = c.UdpConn.ReadTransport(b)
 	return n, netip.AddrPort{}, err
 }
+
+func (c *UdpConn) WriteDeadlineClosesSession() bool {
+	return netproxy.WriteDeadlineClosesSession(c.PacketConn)
+}

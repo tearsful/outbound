@@ -114,3 +114,7 @@ func (c *Conn) ReadReqHeader() (err error) {
 	}
 	return nil
 }
+
+func (c *Conn) WriteDeadlineClosesSession() bool {
+	return netproxy.WriteDeadlineClosesSession(c.Conn)
+}

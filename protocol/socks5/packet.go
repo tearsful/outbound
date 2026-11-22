@@ -129,3 +129,7 @@ func (c *PktConn) Read(b []byte) (n int, err error) {
 func (c *PktConn) Write(b []byte) (n int, err error) {
 	return c.WriteTo(b, c.target)
 }
+
+func (pc *PktConn) WriteDeadlineClosesSession() bool {
+	return netproxy.WriteDeadlineClosesSession(pc.PacketConn)
+}

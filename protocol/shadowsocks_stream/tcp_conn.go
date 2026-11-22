@@ -104,3 +104,7 @@ func (c *TcpConn) Write(b []byte) (n int, err error) {
 func (c *TcpConn) Cipher() *ciphers.StreamCipher {
 	return c.cipher
 }
+
+func (c *TcpConn) WriteDeadlineClosesSession() bool {
+	return netproxy.WriteDeadlineClosesSession(c.Conn)
+}

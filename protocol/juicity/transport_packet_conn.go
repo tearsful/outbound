@@ -1,6 +1,7 @@
 package juicity
 
 import (
+	"github.com/tearsful/outbound/netproxy"
 	"context"
 	"net"
 	"net/netip"
@@ -85,4 +86,11 @@ func (c *TransportPacketConn) WriteTo(p []byte, addr string) (n int, err error) 
 
 func (c *TransportPacketConn) Close() error {
 	return c.Conn.Close()
+}
+
+func (c *TransportPacketConn) WriteDeadlineClosesSession() bool {
+	if c.Transport == nil || c.Conn == nil {
+		return false
+	}
+	return netproxy.WriteDeadlineClosesSession(c.Conn)
 }

@@ -106,3 +106,7 @@ func NewHTTPObfs(conn netproxy.Conn, host string, port string, path string) netp
 		path:          path,
 	}
 }
+
+func (ho *HTTPObfs) WriteDeadlineClosesSession() bool {
+	return netproxy.WriteDeadlineClosesSession(ho.Conn)
+}

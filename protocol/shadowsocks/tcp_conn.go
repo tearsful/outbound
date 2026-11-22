@@ -343,3 +343,7 @@ func CalcPaddingLen(masterKey []byte, bodyWithoutAddr []byte, req bool) (length 
 	h.Write(bodyWithoutAddr)
 	return int(h.Sum32()) % maxPadding
 }
+
+func (c *TCPConn) WriteDeadlineClosesSession() bool {
+	return netproxy.WriteDeadlineClosesSession(c.Conn)
+}

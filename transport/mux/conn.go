@@ -3,6 +3,7 @@
 package mux
 
 import (
+	"github.com/tearsful/outbound/netproxy"
 	"bytes"
 	"encoding/binary"
 	"errors"
@@ -172,4 +173,8 @@ func NewConn(conn net.Conn, option MuxOption) *Conn {
 		id:   option.ID,
 		otb:  metadata,
 	}
+}
+
+func (m *Conn) WriteDeadlineClosesSession() bool {
+	return netproxy.WriteDeadlineClosesSession(m.Conn)
 }

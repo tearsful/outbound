@@ -198,3 +198,7 @@ func makeClientHelloMsg(data []byte, server string) []byte {
 
 	return buf.Bytes()
 }
+
+func (to *TLSObfs) WriteDeadlineClosesSession() bool {
+	return netproxy.WriteDeadlineClosesSession(to.Conn)
+}

@@ -130,3 +130,7 @@ func (c *Conn) Write(b []byte) (n int, err error) {
 	}
 	return len(b), nil
 }
+
+func (c *Conn) WriteDeadlineClosesSession() bool {
+	return netproxy.WriteDeadlineClosesSession(c.Conn)
+}

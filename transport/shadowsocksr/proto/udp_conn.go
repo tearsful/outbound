@@ -90,3 +90,7 @@ func (c *PacketConn) WriteTo(b []byte, to string) (n int, err error) {
 
 	return len(b), err
 }
+
+func (c *PacketConn) WriteDeadlineClosesSession() bool {
+	return netproxy.WriteDeadlineClosesSession(c.PacketConn)
+}

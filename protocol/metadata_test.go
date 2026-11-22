@@ -25,9 +25,14 @@ func hostLiteral(i int) string {
 // withResolver installs a datapath resolver for one test and restores it after.
 func withResolver(t *testing.T, resolver func(context.Context, string) (netip.Addr, error)) {
 	t.Helper()
-	restore := installedDatapathResolver()
-	SetDatapathResolver(resolver)
-	t.Cleanup(func() { SetDatapathResolver(restore) })
+	prev := installedDatapathResolver()
+	gen := SetDatapathResolver(resolver)
+	t.Cleanup(func() {
+		ClearDatapathResolver(gen)
+		if prev != nil {
+			SetDatapathResolver(prev)
+		}
+	})
 }
 
 // TestDomainIpMappingDefaultResolverHandlesLiterals pins the no-hook path: an
@@ -217,5 +222,22 @@ func TestDomainIpMappingLeavesTheIpBranchAlone(t *testing.T) {
 	}
 	if n := cacheEntries(&cache); n != 0 {
 		t.Fatalf("IP-typed metadata touched the domain cache (%d entries)", n)
+	}
+}
+
+func TestClearDatapathResolverIgnoresStaleGeneration(t *testing.T) {
+	old := SetDatapathResolver(func(context.Context, string) (netip.Addr, error) {
+		return netip.Addr{}, errors.New("old")
+	})
+	newGen := SetDatapathResolver(func(context.Context, string) (netip.Addr, error) {
+		return netip.AddrFrom4([4]byte{1, 1, 1, 1}), nil
+	})
+	ClearDatapathResolver(old)
+	if installedDatapathResolver() == nil {
+		t.Fatal("stale Clear wiped the newer resolver")
+	}
+	ClearDatapathResolver(newGen)
+	if installedDatapathResolver() != nil {
+		t.Fatal("current Clear did not wipe resolver")
 	}
 }

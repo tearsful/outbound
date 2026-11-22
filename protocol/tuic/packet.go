@@ -283,3 +283,7 @@ func (conn *quicStreamPacketConn) Write(b []byte) (n int, err error) {
 }
 
 var _ netproxy.PacketConn = (*quicStreamPacketConn)(nil)
+
+func (q *quicStreamPacketConn) WriteDeadlineClosesSession() bool {
+	return true
+}

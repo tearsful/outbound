@@ -480,3 +480,12 @@ func (p *h2ConnsPool) MarkDead(h2c *http2.ClientConn) {
 }
 
 var connPool = newH2ConnsPool()
+
+func (c *Conn) WriteDeadlineClosesSession() bool {
+	if c.isH2 {
+		// The HTTP/2 transport multiplexes every flow onto one session, so it
+		// exposes no destructive per-flow write deadline.
+		return false
+	}
+	return netproxy.WriteDeadlineClosesSession(c.conn)
+}

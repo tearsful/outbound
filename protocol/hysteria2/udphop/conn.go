@@ -1,6 +1,7 @@
 package udphop
 
 import (
+	"github.com/tearsful/outbound/netproxy"
 	"errors"
 	"math/rand"
 	"net"
@@ -285,4 +286,13 @@ func trySetWriteBuffer(pc net.PacketConn, bytes int) error {
 		return sc.SetWriteBuffer(bytes)
 	}
 	return nil
+}
+
+func (u *udpHopPacketConn) WriteDeadlineClosesSession() bool {
+	u.connMutex.RLock()
+	defer u.connMutex.RUnlock()
+	if netproxy.WriteDeadlineClosesSession(u.currentConn) {
+		return true
+	}
+	return u.prevConn != nil && netproxy.WriteDeadlineClosesSession(u.prevConn)
 }

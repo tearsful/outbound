@@ -233,3 +233,7 @@ func (m *udpSessionManager) Count() int {
 	defer m.mutex.RUnlock()
 	return len(m.m)
 }
+
+func (u *udpConn) WriteDeadlineClosesSession() bool {
+	return true
+}

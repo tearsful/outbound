@@ -183,3 +183,7 @@ func (s *assemblerClientSession) Close() error {
 	s.finish()
 	return nil
 }
+
+func (s *assemblerClientSession) WriteDeadlineClosesSession() bool {
+	return true
+}
