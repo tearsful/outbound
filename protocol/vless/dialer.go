@@ -229,6 +229,9 @@ func (d *Dialer) DialContext(ctx context.Context, network string, addr string) (
 
 	switch magicNetwork.Network {
 	case "tcp", "udp":
+		if d.nextDialer == nil {
+			return nil, fmt.Errorf("vless: next dialer is nil")
+		}
 		mdata, err := protocol.ParseMetadata(addr)
 		if err != nil {
 			return nil, err

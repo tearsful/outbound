@@ -5,6 +5,7 @@ import (
 	"context"
 	"net"
 	"net/http"
+	"os"
 	"testing"
 
 	"github.com/tearsful/outbound/netproxy"
@@ -17,6 +18,9 @@ type Params struct {
 }
 
 func TestNewSSStream(t *testing.T) {
+	if os.Getenv("OUTBOUND_INTEGRATION") == "" {
+		t.Skip("set OUTBOUND_INTEGRATION=1 to run live dial tests")
+	}
 	// https://github.com/winterssy/SSR-Docker
 
 	params := Params{

@@ -36,6 +36,11 @@ var (
 func CleanGlobalClientConnectionCache() {
 	globalCCAccess.Lock()
 	defer globalCCAccess.Unlock()
+	for _, meta := range globalCCMap {
+		if meta != nil && meta.cc != nil {
+			_ = meta.cc.Close()
+		}
+	}
 	globalCCMap = make(map[string]*clientConnMeta)
 }
 
@@ -44,6 +49,7 @@ type ccCanceller func()
 type ClientConn struct {
 	tun       proto.GunService_TunClient
 	closer    context.CancelFunc
+	closeOnce sync.Once
 	muReading sync.Mutex // muReading protects reading
 	muWriting sync.Mutex // muWriting protects writing
 	muRecv    sync.Mutex // muReading protects recv
@@ -67,6 +73,9 @@ func NewClientConn(tun proto.GunService_TunClient, closer context.CancelFunc) *C
 	ctx, cancel := context.WithCancel(context.Background())
 	ctxRead, cancelRead := context.WithCancel(context.Background())
 	ctxWrite, cancelWrite := context.WithCancel(context.Background())
+	if closer == nil {
+		closer = func() {}
+	}
 	return &ClientConn{
 		tun:         tun,
 		closer:      closer,
@@ -173,12 +182,14 @@ func (c *ClientConn) Write(p []byte) (n int, err error) {
 }
 
 func (c *ClientConn) Close() error {
-	select {
-	case <-c.ctx.Done():
-	default:
-		c.cancel()
-	}
-	c.closer()
+	c.closeOnce.Do(func() {
+		select {
+		case <-c.ctx.Done():
+		default:
+			c.cancel()
+		}
+		c.closer()
+	})
 	return nil
 }
 func (c *ClientConn) CloseWrite() error {
@@ -321,9 +332,13 @@ func (d *Dialer) DialContext(ctx context.Context, network string, address string
 	if err != nil {
 		return nil, err
 	}
-	meta, cancel, err := getGrpcClientConn(ctx, d.NextDialer, d.ServerName, address, d.AllowInsecure, d.MultiMode, magicNetwork.Mark, magicNetwork.Mptcp)
+	if d.NextDialer == nil {
+		return nil, fmt.Errorf("grpc: next dialer is nil")
+	}
+
+	meta, releaseCC, err := getGrpcClientConn(ctx, d.NextDialer, d.ServerName, address, d.AllowInsecure, d.MultiMode, magicNetwork.Mark, magicNetwork.Mptcp)
 	if err != nil {
-		cancel()
+		releaseCC()
 		return nil, err
 	}
 	client := proto.NewGunServiceClient(meta.cc)
@@ -333,14 +348,51 @@ func (d *Dialer) DialContext(ctx context.Context, network string, address string
 	if serviceName == "" {
 		serviceName = "GunService"
 	}
-	// ctx is the lifetime of the tun
-	ctxStream, streamCloser := context.WithCancel(context.Background())
+	// ctx is the lifetime of the tun stream
+	ctxStream, cancelStream := context.WithCancel(context.Background())
 	tun, err := clientX.TunCustomName(ctxStream, serviceName)
 	if err != nil {
-		streamCloser()
+		cancelStream()
+		releaseCC()
 		return nil, err
 	}
-	return NewClientConn(tun, streamCloser), nil
+	return NewClientConn(tun, func() {
+		cancelStream()
+		releaseCC()
+	}), nil
+}
+
+type grpcConnFactory func() (*grpc.ClientConn, error)
+
+// acquireGrpcClientConn implements the documented gun/multi split:
+//   - gun (multiMode=false): dedicated ClientConn per logical dial; release closes it
+//   - multi: shared ClientConn keyed by TLS identity; release is a no-op
+func acquireGrpcClientConn(cacheKey string, multiMode bool, create grpcConnFactory) (*clientConnMeta, ccCanceller, error) {
+	if !multiMode {
+		cc, err := create()
+		if err != nil {
+			return nil, func() {}, err
+		}
+		return &clientConnMeta{cc: cc}, func() { _ = cc.Close() }, nil
+	}
+
+	globalCCAccess.Lock()
+	defer globalCCAccess.Unlock()
+
+	if globalCCMap == nil {
+		globalCCMap = make(map[string]*clientConnMeta)
+	}
+	if meta, found := globalCCMap[cacheKey]; found && meta != nil && meta.cc != nil && meta.cc.GetState() != connectivity.Shutdown {
+		return meta, func() {}, nil
+	}
+
+	cc, err := create()
+	if err != nil {
+		return nil, func() {}, err
+	}
+	meta := &clientConnMeta{cc: cc}
+	globalCCMap[cacheKey] = meta
+	return meta, func() {}, nil
 }
 
 func getGrpcClientConn(ctx context.Context, tcpDialer netproxy.Dialer, serverName string, address string, allowInsecure bool, multiMode bool, somark uint32, mptcp bool) (*clientConnMeta, ccCanceller, error) {
@@ -350,33 +402,7 @@ func getGrpcClientConn(ctx context.Context, tcpDialer netproxy.Dialer, serverNam
 	}
 	certOption := grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{ServerName: serverName, RootCAs: roots, InsecureSkipVerify: allowInsecure}))
 
-	cacheKey := grpcClientCacheKey(address, serverName, allowInsecure, multiMode)
-
-	globalCCAccess.Lock()
-	if globalCCMap == nil {
-		globalCCMap = make(map[string]*clientConnMeta)
-	}
-	globalCCAccess.Unlock()
-
-	canceller := func() {
-		globalCCAccess.Lock()
-		defer globalCCAccess.Unlock()
-		if meta, ok := globalCCMap[cacheKey]; ok {
-			meta.cc.Close()
-			delete(globalCCMap, cacheKey)
-		}
-	}
-
-	// TODO Should support chain proxy to the same destination
-	globalCCAccess.Lock()
-	if meta, found := globalCCMap[cacheKey]; found && meta.cc.GetState() != connectivity.Shutdown {
-		globalCCAccess.Unlock()
-		return meta, canceller, nil
-	}
-	globalCCAccess.Unlock()
-	meta := &clientConnMeta{
-		cc: nil,
-	}
+	cacheKey := grpcClientCacheKey(fmt.Sprintf("%p", tcpDialer), address, serverName, allowInsecure, somark, mptcp)
 
 	keepAlive := keepalive.ClientParameters{
 		Time:                30 * time.Second,
@@ -385,62 +411,55 @@ func getGrpcClientConn(ctx context.Context, tcpDialer netproxy.Dialer, serverNam
 	}
 	windowSize := int32(65535)
 	if multiMode {
-		// Align with xray-core multi: keep HTTP/2 warm for concurrent Tun streams.
+		// Keep HTTP/2 warm for concurrent Tun streams.
 		keepAlive.Time = 10 * time.Second
 		keepAlive.Timeout = 20 * time.Second
 		keepAlive.PermitWithoutStream = true
 		windowSize = 1 << 20 // 1 MiB
 	}
 
-	meta.cc, err = grpc.DialContext(ctx, address,
-		certOption,
-		grpc.WithContextDialer(func(ctxGrpc context.Context, s string) (net.Conn, error) {
-			tcpNetwork := netproxy.MagicNetwork{
-				Network: "tcp",
-				Mark:    somark,
-				Mptcp:   mptcp,
-			}.Encode()
-			c, err := tcpDialer.DialContext(ctxGrpc, tcpNetwork, s)
-			if err != nil {
-				return nil, err
-			}
-			return &netproxy.FakeNetConn{
-				Conn:  c,
-				LAddr: nil,
-				RAddr: nil,
-			}, nil
-		}), grpc.WithConnectParams(grpc.ConnectParams{
-			Backoff: backoff.Config{
-				BaseDelay:  500 * time.Millisecond,
-				Multiplier: 1.5,
-				Jitter:     0.2,
-				MaxDelay:   19 * time.Second,
-			},
-			MinConnectTimeout: 5 * time.Second,
-		}),
-		grpc.WithKeepaliveParams(keepAlive),
-		grpc.WithDefaultCallOptions(
-			grpc.MaxCallRecvMsgSize(4*1024*1024),
-			grpc.MaxCallSendMsgSize(4*1024*1024),
-		),
-		grpc.WithInitialWindowSize(windowSize),
-		grpc.WithInitialConnWindowSize(windowSize),
-	)
-	if err != nil {
-		return nil, canceller, err
+	create := func() (*grpc.ClientConn, error) {
+		return grpc.DialContext(ctx, address,
+			certOption,
+			grpc.WithContextDialer(func(ctxGrpc context.Context, s string) (net.Conn, error) {
+				tcpNetwork := netproxy.MagicNetwork{
+					Network: "tcp",
+					Mark:    somark,
+					Mptcp:   mptcp,
+				}.Encode()
+				c, err := tcpDialer.DialContext(ctxGrpc, tcpNetwork, s)
+				if err != nil {
+					return nil, err
+				}
+				return &netproxy.FakeNetConn{
+					Conn:  c,
+					LAddr: nil,
+					RAddr: nil,
+				}, nil
+			}), grpc.WithConnectParams(grpc.ConnectParams{
+				Backoff: backoff.Config{
+					BaseDelay:  500 * time.Millisecond,
+					Multiplier: 1.5,
+					Jitter:     0.2,
+					MaxDelay:   19 * time.Second,
+				},
+				MinConnectTimeout: 5 * time.Second,
+			}),
+			grpc.WithKeepaliveParams(keepAlive),
+			grpc.WithDefaultCallOptions(
+				grpc.MaxCallRecvMsgSize(4*1024*1024),
+				grpc.MaxCallSendMsgSize(4*1024*1024),
+			),
+			grpc.WithInitialWindowSize(windowSize),
+			grpc.WithInitialConnWindowSize(windowSize),
+		)
 	}
-	globalCCAccess.Lock()
-	globalCCMap[cacheKey] = meta
-	globalCCAccess.Unlock()
-	return meta, canceller, err
+
+	return acquireGrpcClientConn(cacheKey, multiMode, create)
 }
 
-// grpcClientCacheKey keeps TLS identity and multi-mode in the key so insecure
-// and secure dials (or different SNIs) never share a ClientConn.
-func grpcClientCacheKey(address, serverName string, allowInsecure, multiMode bool) string {
-	cacheKey := fmt.Sprintf("%s|sni=%s|insecure=%t", address, serverName, allowInsecure)
-	if multiMode {
-		cacheKey += "|multi"
-	}
-	return cacheKey
+// grpcClientCacheKey keeps dialer identity + TLS/socket policy in the key so
+// insecure/secure, SNI, mark, or chained dialers never share a ClientConn.
+func grpcClientCacheKey(dialerID, address, serverName string, allowInsecure bool, somark uint32, mptcp bool) string {
+	return fmt.Sprintf("%s|%s|sni=%s|insecure=%t|mark=%d|mptcp=%t", dialerID, address, serverName, allowInsecure, somark, mptcp)
 }

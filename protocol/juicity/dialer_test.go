@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 
@@ -20,6 +21,9 @@ type Params struct {
 }
 
 func TestTcp(t *testing.T) {
+	if os.Getenv("OUTBOUND_INTEGRATION") == "" {
+		t.Skip("set OUTBOUND_INTEGRATION=1 to run live dial tests")
+	}
 	d, err := NewDialer(direct.SymmetricDirect, protocol.Header{
 		ProxyAddress: "example.com:50001",
 		SNI:          "",
@@ -59,6 +63,9 @@ func TestTcp(t *testing.T) {
 }
 
 func TestUdp(t *testing.T) {
+	if os.Getenv("OUTBOUND_INTEGRATION") == "" {
+		t.Skip("set OUTBOUND_INTEGRATION=1 to run live dial tests")
+	}
 	d, err := NewDialer(direct.SymmetricDirect, protocol.Header{
 		ProxyAddress: "example.com:50001",
 		SNI:          "",

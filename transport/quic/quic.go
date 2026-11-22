@@ -7,11 +7,12 @@ import (
 	"net"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
+	"github.com/daeuniverse/quic-go"
 	"github.com/tearsful/outbound/dialer"
 	"github.com/tearsful/outbound/netproxy"
-	"github.com/daeuniverse/quic-go"
 )
 
 // QuicConfig 定义 QUIC 传输配置
@@ -43,6 +44,9 @@ func NewQuic(option *dialer.ExtraOption, nextDialer netproxy.Dialer, link string
 	u, err := url.Parse(link)
 	if err != nil {
 		return nil, nil, fmt.Errorf("invalid quic link: %w", err)
+	}
+	if !strings.EqualFold(u.Scheme, "quic") || u.Hostname() == "" {
+		return nil, nil, fmt.Errorf("invalid quic link: scheme must be quic with a host")
 	}
 
 	config := &QuicConfig{

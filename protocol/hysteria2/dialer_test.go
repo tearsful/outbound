@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 
@@ -16,6 +17,9 @@ import (
 )
 
 func TestTCP(t *testing.T) {
+	if os.Getenv("OUTBOUND_INTEGRATION") == "" {
+		t.Skip("set OUTBOUND_INTEGRATION=1 to run live dial tests")
+	}
 	d, err := NewDialer(direct.SymmetricDirect, protocol.Header{
 		ProxyAddress: "localhost:8443",
 		SNI:          "",
@@ -52,6 +56,9 @@ func TestTCP(t *testing.T) {
 }
 
 func TestUDP(t *testing.T) {
+	if os.Getenv("OUTBOUND_INTEGRATION") == "" {
+		t.Skip("set OUTBOUND_INTEGRATION=1 to run live dial tests")
+	}
 	d, err := NewDialer(direct.SymmetricDirect, protocol.Header{
 		ProxyAddress: "localhost:8443",
 		SNI:          "",

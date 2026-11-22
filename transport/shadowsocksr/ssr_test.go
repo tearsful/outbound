@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 
@@ -18,6 +19,9 @@ import (
 )
 
 func TestTcp(t *testing.T) {
+	if os.Getenv("OUTBOUND_INTEGRATION") == "" {
+		t.Skip("set OUTBOUND_INTEGRATION=1 to run live dial tests")
+	}
 	// https://github.com/winterssy/SSR-Docker
 	// Remember to set protocol_param to 3000# (max_client)
 	d := direct.SymmetricDirect
@@ -72,6 +76,9 @@ func TestTcp(t *testing.T) {
 }
 
 func TestUdp(t *testing.T) {
+	if os.Getenv("OUTBOUND_INTEGRATION") == "" {
+		t.Skip("set OUTBOUND_INTEGRATION=1 to run live dial tests")
+	}
 	// https://github.com/winterssy/SSR-Docker
 	// Remember to set protocol_param to 3000# (max_client)
 	d := direct.SymmetricDirect

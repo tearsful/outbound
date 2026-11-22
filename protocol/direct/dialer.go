@@ -16,6 +16,11 @@ var (
 	FullconeDirect  netproxy.Dialer
 )
 
+func init() {
+	// Ensure package-level dialers are always usable without an explicit InitDirectDialers call.
+	InitDirectDialers("")
+}
+
 func InitDirectDialers(fallbackDNS string) {
 	SymmetricDirect = NewDirectDialerLaddr(netip.Addr{}, Option{FullCone: false, FallbackDNS: fallbackDNS})
 	FullconeDirect = NewDirectDialerLaddr(netip.Addr{}, Option{FullCone: true, FallbackDNS: fallbackDNS})

@@ -5,7 +5,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tearsful/outbound/netproxy"
 	"github.com/tearsful/outbound/protocol"
+	"github.com/tearsful/outbound/protocol/vless/encryption"
 )
 
 func TestVLESSXHTTPSupport(t *testing.T) {
@@ -65,14 +67,26 @@ func TestVLESSPostQuantumEncryption(t *testing.T) {
 }
 
 func TestVLESSMLDSA65Auth(t *testing.T) {
-	// 测试 MLDSA65 认证支持
+	seed := make([]byte, 32)
+	for i := range seed {
+		seed[i] = byte(i)
+	}
+	auth, err := encryption.NewMLDSA65Auth(seed, nil)
+	if err != nil {
+		t.Fatalf("NewMLDSA65Auth: %v", err)
+	}
+	pub, err := auth.GetPublicKeyBase64()
+	if err != nil {
+		t.Fatalf("GetPublicKeyBase64: %v", err)
+	}
+
 	header := protocol.Header{
 		ProxyAddress: "example.com:443",
 		Password:     "test-uuid",
 		Feature1:     "xtls-rprx-vision",
 		Feature2:     "none",
-		Feature4:     "test-seed-base64",
-		Feature5:     "test-verify-key-base64",
+		Feature4:     auth.GetSeedBase64(),
+		Feature5:     pub,
 		IsClient:     true,
 	}
 
@@ -85,7 +99,6 @@ func TestVLESSMLDSA65Auth(t *testing.T) {
 		t.Fatal("Dialer should not be nil")
 	}
 
-	// 验证 MLDSA65 认证实例
 	if dialer.(*Dialer).mldsa65Auth == nil {
 		t.Error("MLDSA65 auth instance should not be nil")
 	}
@@ -176,8 +189,14 @@ func TestVLESSEncryptionModes(t *testing.T) {
 	}
 }
 
+type blockingNextDialer struct{}
+
+func (blockingNextDialer) DialContext(ctx context.Context, network, addr string) (netproxy.Conn, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
 func TestVLESSConnectionTimeout(t *testing.T) {
-	// 测试连接超时
 	header := protocol.Header{
 		ProxyAddress: "nonexistent.example.com:443",
 		Password:     "test-uuid",
@@ -185,16 +204,24 @@ func TestVLESSConnectionTimeout(t *testing.T) {
 		IsClient:     true,
 	}
 
-	dialer, err := NewDialer(nil, header)
+	// nil next dialer must fail cleanly (no panic)
+	dNil, err := NewDialer(nil, header)
 	if err != nil {
 		t.Fatalf("Failed to create dialer: %v", err)
 	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
+	if _, err = dNil.DialContext(ctx, "tcp", "example.com:80"); err == nil {
+		t.Error("Expected nil next dialer to fail")
+	}
 
-	_, err = dialer.DialContext(ctx, "tcp", "example.com:80")
-	if err == nil {
+	d, err := NewDialer(blockingNextDialer{}, header)
+	if err != nil {
+		t.Fatalf("Failed to create dialer: %v", err)
+	}
+	ctx2, cancel2 := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel2()
+	if _, err = d.DialContext(ctx2, "tcp", "example.com:80"); err == nil {
 		t.Error("Expected connection to fail due to timeout")
 	}
 }

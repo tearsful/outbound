@@ -65,3 +65,16 @@ func TestSecurityUsesTLSIncludesXTLS(t *testing.T) {
 		t.Fatal("none/reality should not use generic TLS wrap helper")
 	}
 }
+
+func TestIsGRPCMultiMode(t *testing.T) {
+	for _, mode := range []string{"multi", "MULTI", "guna"} {
+		if !isGRPCMultiMode(mode) {
+			t.Fatalf("%q should enable multi mode", mode)
+		}
+	}
+	for _, mode := range []string{"", "gun", "single"} {
+		if isGRPCMultiMode(mode) {
+			t.Fatalf("%q should not enable multi mode", mode)
+		}
+	}
+}

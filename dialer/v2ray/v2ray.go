@@ -98,6 +98,15 @@ func securityUsesTLS(security string) bool {
 	}
 }
 
+func isGRPCMultiMode(mode string) bool {
+	switch strings.ToLower(mode) {
+	case "multi", "guna":
+		return true
+	default:
+		return false
+	}
+}
+
 func securityUsesTLSOrReality(security string) bool {
 	return securityUsesTLS(security) || strings.EqualFold(security, "reality")
 }
@@ -195,7 +204,7 @@ func (s *V2Ray) Dialer(option *dialer.ExtraOption, nextDialer netproxy.Dialer) (
 			ServiceName:   serviceName,
 			ServerName:    sni,
 			AllowInsecure: s.AllowInsecure || option.AllowInsecure,
-			MultiMode:     mode == "multi" || mode == "guna",
+			MultiMode:     isGRPCMultiMode(mode),
 		}
 	case "http", "http2", "h2":
 		sni := s.SNI
