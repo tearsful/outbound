@@ -11,11 +11,11 @@ import (
 )
 
 func TestVLESSXHTTPSupport(t *testing.T) {
-	// 测试 XHTTP 传输支持
+	// 测试 XHTTP 传输支持（XTLS flow 与 xhttp 不兼容，须为空）
 	header := protocol.Header{
 		ProxyAddress: "example.com:443?type=xhttp&path=/path&mode=auto",
 		Password:     "test-uuid",
-		Feature1:     "xtls-rprx-vision",
+		Feature1:     "",
 		Feature2:     "none",
 		Feature3:     "xhttp",
 		IsClient:     true,
@@ -33,6 +33,43 @@ func TestVLESSXHTTPSupport(t *testing.T) {
 	// 验证传输类型
 	if dialer.(*Dialer).transportType != "xhttp" {
 		t.Errorf("Expected transport type 'xhttp', got '%s'", dialer.(*Dialer).transportType)
+	}
+
+	cfg := dialer.(*Dialer).xhttpConfig
+	if cfg == nil || cfg.Host != "example.com:443" || cfg.Path != "/path" || cfg.Mode != "auto" {
+		t.Fatalf("unexpected xhttp config: %+v", cfg)
+	}
+}
+
+func TestVLESSXHTTPRejectsVisionFlow(t *testing.T) {
+	_, err := NewDialer(nil, protocol.Header{
+		ProxyAddress: "1.2.3.4:443",
+		Password:     "test-uuid",
+		Feature1:     XRV,
+		Feature2:     "none",
+		Feature3:     "xhttp",
+		IsClient:     true,
+	})
+	if err == nil {
+		t.Fatal("expected vision+xhttp to be rejected")
+	}
+}
+
+func TestVLESSXHTTPAcceptsIPProxyAddress(t *testing.T) {
+	d, err := NewDialer(nil, protocol.Header{
+		ProxyAddress: "1.2.3.4:443",
+		Password:     "12203a60-7e88-4930-b778-a9fa80c911e5",
+		Feature1:     "",
+		Feature2:     "none",
+		Feature3:     "xhttp",
+		IsClient:     true,
+		Extra:        map[string]string{"xhttp.path": "/", "xhttp.mode": "auto"},
+	})
+	if err != nil {
+		t.Fatalf("IP proxy address should parse: %v", err)
+	}
+	if d.(*Dialer).xhttpConfig.Host != "1.2.3.4:443" {
+		t.Fatalf("host = %q", d.(*Dialer).xhttpConfig.Host)
 	}
 }
 

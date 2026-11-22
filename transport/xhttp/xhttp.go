@@ -3,6 +3,7 @@ package xhttp
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/base64"
 	"fmt"
 	"io"
@@ -28,6 +29,9 @@ type XHTTPConfig struct {
 	DownloadSettings   *XHTTPConfig
 	Xmux               *XmuxConfig
 	OnNfsPKeys         func(keys [][]byte)
+	// TLS knobs used when the underlay is plain TCP (not Reality/TLS).
+	ServerName    string
+	AllowInsecure bool
 }
 
 type XmuxConfig struct {
@@ -38,12 +42,25 @@ type XmuxConfig struct {
 	MaxConcurrentStreams int32
 }
 
+// DialerOptions wires an underlay dialer (TCP / TLS / Reality) into the HTTP client.
+type DialerOptions struct {
+	Underlay   netproxy.Dialer
+	AlreadyTLS bool // underlay already completed TLS (e.g. Reality)
+	Mark       uint32
+	Mptcp      bool
+}
+
 type XHTTPDialer struct {
 	config *XHTTPConfig
 	client *http.Client
+	opts   DialerOptions
 }
 
 func NewXHTTPDialer(config *XHTTPConfig) (*XHTTPDialer, error) {
+	return NewXHTTPDialerWithOptions(config, nil)
+}
+
+func NewXHTTPDialerWithOptions(config *XHTTPConfig, opts *DialerOptions) (*XHTTPDialer, error) {
 	if config == nil {
 		config = &XHTTPConfig{
 			Path:             "/",
@@ -64,17 +81,69 @@ func NewXHTTPDialer(config *XHTTPConfig) (*XHTTPDialer, error) {
 		config.Headers = make(map[string]string)
 	}
 
-	client := &http.Client{
-		Transport: &http.Transport{
-			MaxIdleConns:        100,
-			IdleConnTimeout:     90 * time.Second,
-			DisableCompression:  true,
-			MaxIdleConnsPerHost: 10,
-			ForceAttemptHTTP2:   true,
-		},
+	d := &XHTTPDialer{config: config}
+	if opts != nil {
+		d.opts = *opts
+	}
+	d.client = &http.Client{
+		Timeout:   0, // long-lived streams
+		Transport: d.buildTransport(),
+	}
+	return d, nil
+}
+
+func (d *XHTTPDialer) buildTransport() *http.Transport {
+	tr := &http.Transport{
+		MaxIdleConns:        100,
+		IdleConnTimeout:     90 * time.Second,
+		DisableCompression:  true,
+		MaxIdleConnsPerHost: 10,
+		ForceAttemptHTTP2:   true,
 	}
 
-	return &XHTTPDialer{config: config, client: client}, nil
+	sni := d.config.ServerName
+	if sni == "" {
+		if host := d.config.Headers["Host"]; host != "" {
+			sni = host
+		} else if h, _, err := net.SplitHostPort(d.config.Host); err == nil {
+			sni = h
+		} else {
+			sni = d.config.Host
+		}
+	}
+	tr.TLSClientConfig = &tls.Config{
+		ServerName:         sni,
+		InsecureSkipVerify: d.config.AllowInsecure, //nolint:gosec // user-configured
+	}
+
+	if d.opts.Underlay == nil {
+		return tr
+	}
+
+	dialUnderlay := func(ctx context.Context, addr string) (net.Conn, error) {
+		tcpNetwork := netproxy.MagicNetwork{
+			Network: "tcp",
+			Mark:    d.opts.Mark,
+			Mptcp:   d.opts.Mptcp,
+		}.Encode()
+		c, err := d.opts.Underlay.DialContext(ctx, tcpNetwork, addr)
+		if err != nil {
+			return nil, err
+		}
+		return &netproxy.FakeNetConn{Conn: c}, nil
+	}
+
+	if d.opts.AlreadyTLS {
+		// Reality/TLS underlay: HTTP speaks over the already-secured conn.
+		tr.DialTLSContext = func(ctx context.Context, _network, addr string) (net.Conn, error) {
+			return dialUnderlay(ctx, addr)
+		}
+	} else {
+		tr.DialContext = func(ctx context.Context, _network, addr string) (net.Conn, error) {
+			return dialUnderlay(ctx, addr)
+		}
+	}
+	return tr
 }
 
 func (d *XHTTPDialer) DialContext(ctx context.Context, network, address string) (netproxy.Conn, error) {
@@ -87,13 +156,6 @@ func (d *XHTTPDialer) DialContext(ctx context.Context, network, address string) 
 		Scheme: "https",
 		Host:   hostPort,
 		Path:   d.config.Path,
-	}
-	if len(d.config.Headers) > 0 {
-		query := requestURL.Query()
-		for key, value := range d.config.Headers {
-			query.Set(key, value)
-		}
-		requestURL.RawQuery = query.Encode()
 	}
 
 	switch strings.ToLower(d.config.Mode) {
@@ -126,6 +188,10 @@ func resolveXHTTPHostPort(config *XHTTPConfig, address string) (string, error) {
 
 func (d *XHTTPDialer) applyHeaders(req *http.Request) {
 	for key, value := range d.config.Headers {
+		if strings.EqualFold(key, "Host") {
+			req.Host = value
+			continue
+		}
 		req.Header.Set(key, value)
 	}
 }
@@ -233,6 +299,13 @@ func (c *xhttpStreamConn) waitReader() error {
 		select {
 		case <-c.ctx.Done():
 			c.readerErr = c.ctx.Err()
+			// Drain async result so a late success does not leak the body.
+			go func() {
+				res := <-c.ready
+				if res.body != nil {
+					_ = res.body.Close()
+				}
+			}()
 		case res := <-c.ready:
 			if res.err != nil {
 				c.readerErr = res.err
@@ -330,6 +403,10 @@ func (c *xhttpPacketConn) Write(b []byte) (int, error) {
 			return written, err
 		}
 		for key, value := range c.config.Headers {
+			if strings.EqualFold(key, "Host") {
+				req.Host = value
+				continue
+			}
 			req.Header.Set(key, value)
 		}
 		req.Header.Set("Content-Type", "application/octet-stream")
@@ -367,11 +444,28 @@ func (c *xhttpPacketConn) SetDeadline(t time.Time) error      { return nil }
 func (c *xhttpPacketConn) SetReadDeadline(t time.Time) error  { return nil }
 func (c *xhttpPacketConn) SetWriteDeadline(t time.Time) error { return nil }
 
+// ParseXHTTPConfig accepts absolute URLs or bare host:port[?query][/path] forms
+// used by VLESS ProxyAddress.
 func ParseXHTTPConfig(rawURL string) (*XHTTPConfig, error) {
-	u, err := url.Parse(rawURL)
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return nil, fmt.Errorf("invalid URL: empty")
+	}
+
+	var (
+		u   *url.URL
+		err error
+	)
+	if strings.Contains(rawURL, "://") {
+		u, err = url.Parse(rawURL)
+	} else {
+		// host:port, host:port/path, host:port?query — force absolute form.
+		u, err = url.Parse("https://" + rawURL)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("invalid URL: %v", err)
 	}
+
 	config := &XHTTPConfig{
 		Host:    u.Host,
 		Path:    u.Path,
@@ -383,6 +477,9 @@ func ParseXHTTPConfig(rawURL string) (*XHTTPConfig, error) {
 	}
 	if mode := query.Get("mode"); mode != "" {
 		config.Mode = mode
+	}
+	if host := query.Get("host"); host != "" {
+		config.Headers["Host"] = host
 	}
 	if maxBytes := query.Get("maxEachPostBytes"); maxBytes != "" {
 		if val, err := strconv.ParseInt(maxBytes, 10, 64); err == nil {

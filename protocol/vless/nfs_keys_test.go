@@ -38,7 +38,7 @@ func TestDialerReadsNfsPKeysFromHeaderExtra(t *testing.T) {
 	h := protocol.Header{
 		ProxyAddress: "example.com:443",
 		Password:     "12203a60-7e88-4930-b778-a9fa80c911e5",
-		Feature1:     "xtls-rprx-vision",
+		Feature1:     "",
 		Feature2:     "mlkem768x25519plus.native.0rtt",
 		Feature3:     "xhttp",
 		IsClient:     true,

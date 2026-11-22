@@ -342,6 +342,14 @@ func (s *V2Ray) Dialer(option *dialer.ExtraOption, nextDialer netproxy.Dialer) (
 		if s.Host != "" {
 			extra["xhttp.headers"] = "Host:" + s.Host
 		}
+		if s.SNI != "" {
+			extra["xhttp.serverName"] = s.SNI
+		} else if s.Host != "" {
+			extra["xhttp.serverName"] = s.Host
+		}
+		if s.AllowInsecure || option.AllowInsecure {
+			extra["xhttp.allowInsecure"] = "1"
+		}
 	}
 
 	if d, err = protocol.NewDialer(s.Protocol, d, protocol.Header{

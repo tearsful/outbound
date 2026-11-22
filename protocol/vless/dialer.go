@@ -10,6 +10,7 @@ import (
 	"github.com/tearsful/outbound/protocol/vless/encryption"
 	"github.com/tearsful/outbound/protocol/vless/vision"
 	"github.com/tearsful/outbound/protocol/vmess"
+	tlsTransport "github.com/tearsful/outbound/transport/tls"
 	"github.com/tearsful/outbound/transport/xhttp"
 )
 
@@ -109,6 +110,14 @@ func NewDialer(nextDialer netproxy.Dialer, header protocol.Header) (netproxy.Dia
 		}
 	}
 
+	// XTLS vision/origin splice semantics need a raw TLS/TCP stream; XHTTP framing is incompatible.
+	if transportType == TransportXHTTP {
+		switch flow {
+		case XRV, FlowVisionReality, FlowVisionRealityTCP, FlowOrigin, FlowOriginUDP443, FlowDirect, FlowDirectUDP443, FlowSplice, FlowSpliceUDP443:
+			return nil, fmt.Errorf("vless: xtls flow %q is incompatible with xhttp transport", flow)
+		}
+	}
+
 	// 初始化 Post-Quantum Encryption（如果支持）
 	var pqeEncryption *encryption.PostQuantumEncryption
 	if encryptionMode == EncryptionMLKEM768X25519Plus {
@@ -158,6 +167,12 @@ func NewDialer(nextDialer netproxy.Dialer, header protocol.Header) (netproxy.Dia
 						xhttpConfig.Headers[strings.TrimSpace(kv[0])] = strings.TrimSpace(kv[1])
 					}
 				}
+			}
+			if v, ok := header.Extra["xhttp.serverName"]; ok && v != "" {
+				xhttpConfig.ServerName = v
+			}
+			if v, ok := header.Extra["xhttp.allowInsecure"]; ok && (v == "1" || strings.EqualFold(v, "true")) {
+				xhttpConfig.AllowInsecure = true
 			}
 		}
 	}
@@ -315,7 +330,7 @@ func (d *Dialer) dialXHTTP(ctx context.Context, magicNetwork netproxy.MagicNetwo
 	if d.xhttpConfig != nil {
 		cfg := d.xhttpConfig
 		if cfg.Host == "" {
-			cfg.Host = d.proxyAddress
+			cfg.Host = stripProxyAddressQuery(d.proxyAddress)
 		}
 		cfg.OnNfsPKeys = func(keys [][]byte) {
 			if len(keys) == 0 {
@@ -324,13 +339,21 @@ func (d *Dialer) dialXHTTP(ctx context.Context, magicNetwork netproxy.MagicNetwo
 			defaultNfsKeyCache.Set(d.proxyAddress, keys)
 		}
 	}
-	xhttpDialer, err := xhttp.NewXHTTPDialer(d.xhttpConfig)
+
+	opts := &xhttp.DialerOptions{
+		Underlay:   d.nextDialer,
+		AlreadyTLS: underlayAlreadyTLS(d.nextDialer),
+		Mark:       magicNetwork.Mark,
+		Mptcp:      magicNetwork.Mptcp,
+	}
+	xhttpDialer, err := xhttp.NewXHTTPDialerWithOptions(d.xhttpConfig, opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create XHTTP dialer: %v", err)
 	}
 
 	// Always dial the proxy endpoint; VLESS metadata carries the target.
-	conn, err := xhttpDialer.DialContext(ctx, magicNetwork.Network, d.proxyAddress)
+	dialAddr := stripProxyAddressQuery(d.proxyAddress)
+	conn, err := xhttpDialer.DialContext(ctx, magicNetwork.Network, dialAddr)
 	if err != nil {
 		return nil, fmt.Errorf("XHTTP dial failed: %v", err)
 	}
@@ -361,4 +384,20 @@ func (d *Dialer) dialXHTTP(ctx context.Context, magicNetwork netproxy.MagicNetwo
 		return nil, err
 	}
 	return conn, nil
+}
+
+func underlayAlreadyTLS(d netproxy.Dialer) bool {
+	switch d.(type) {
+	case *tlsTransport.Reality, *tlsTransport.Tls:
+		return true
+	default:
+		return false
+	}
+}
+
+func stripProxyAddressQuery(addr string) string {
+	if i := strings.IndexByte(addr, '?'); i >= 0 {
+		return addr[:i]
+	}
+	return addr
 }

@@ -10,6 +10,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/tearsful/outbound/netproxy"
 )
 
 func TestResolveXHTTPHostPortPrefersConfigHost(t *testing.T) {
@@ -19,6 +21,74 @@ func TestResolveXHTTPHostPortPrefersConfigHost(t *testing.T) {
 	}
 	if host != "proxy.example.com:443" {
 		t.Fatalf("host = %q", host)
+	}
+}
+
+func TestParseXHTTPConfigHostPortForms(t *testing.T) {
+	cases := []struct {
+		in   string
+		host string
+		path string
+		mode string
+	}{
+		{"1.2.3.4:443", "1.2.3.4:443", "", ""},
+		{"example.com:443?type=xhttp&path=/path&mode=auto", "example.com:443", "/path", "auto"},
+		{"https://cdn.example.com:8443/xhttp?mode=stream-one&host=virtual.example", "cdn.example.com:8443", "/xhttp", "stream-one"},
+	}
+	for _, tc := range cases {
+		cfg, err := ParseXHTTPConfig(tc.in)
+		if err != nil {
+			t.Fatalf("%s: %v", tc.in, err)
+		}
+		if cfg.Host != tc.host || cfg.Path != tc.path || cfg.Mode != tc.mode {
+			t.Fatalf("%s: got host=%q path=%q mode=%q", tc.in, cfg.Host, cfg.Path, cfg.Mode)
+		}
+	}
+	cfg, err := ParseXHTTPConfig("example.com:443?host=cdn.example.com&path=/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Headers["Host"] != "cdn.example.com" {
+		t.Fatalf("Host header = %q", cfg.Headers["Host"])
+	}
+}
+
+func TestDialContextDoesNotLeakHeadersIntoQuery(t *testing.T) {
+	var sawURL string
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sawURL = r.URL.String()
+		if r.Host != "cdn.example.com" {
+			t.Errorf("Host = %q", r.Host)
+		}
+		if strings.Contains(r.URL.RawQuery, "Host=") {
+			t.Errorf("headers leaked into query: %s", r.URL.RawQuery)
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer srv.Close()
+
+	d, err := NewXHTTPDialer(&XHTTPConfig{
+		Host:    strings.TrimPrefix(srv.URL, "https://"),
+		Path:    "/xhttp",
+		Mode:    "packet-up",
+		Headers: map[string]string{"Host": "cdn.example.com"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	d.client = srv.Client()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	conn, err := d.DialContext(ctx, "tcp", strings.TrimPrefix(srv.URL, "https://"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	buf := make([]byte, 8)
+	_, _ = conn.Read(buf)
+	if sawURL == "" {
+		t.Fatal("request not observed")
 	}
 }
 
@@ -107,6 +177,50 @@ func TestStreamOneBidirectional(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatalf("upload = %q, want up-data", gotUpload)
+}
+
+type stubConn struct{}
+
+func (stubConn) Read([]byte) (int, error)         { return 0, io.EOF }
+func (stubConn) Write(b []byte) (int, error)      { return len(b), nil }
+func (stubConn) Close() error                     { return nil }
+func (stubConn) SetDeadline(time.Time) error      { return nil }
+func (stubConn) SetReadDeadline(time.Time) error  { return nil }
+func (stubConn) SetWriteDeadline(time.Time) error { return nil }
+
+type stubUnderlay struct {
+	dialed chan string
+}
+
+func (s *stubUnderlay) DialContext(ctx context.Context, network, addr string) (netproxy.Conn, error) {
+	select {
+	case s.dialed <- addr:
+	default:
+	}
+	return stubConn{}, nil
+}
+
+func TestXHTTPUsesUnderlayDialer(t *testing.T) {
+	under := &stubUnderlay{dialed: make(chan string, 1)}
+	d, err := NewXHTTPDialerWithOptions(&XHTTPConfig{
+		Host: "proxy.example.com:443",
+		Path: "/",
+		Mode: "packet-up",
+	}, &DialerOptions{Underlay: under, AlreadyTLS: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	_, _ = d.DialContext(ctx, "tcp", "proxy.example.com:443")
+	select {
+	case addr := <-under.dialed:
+		if addr != "proxy.example.com:443" {
+			t.Fatalf("underlay addr = %q", addr)
+		}
+	case <-ctx.Done():
+		t.Fatal("underlay was not used")
+	}
 }
 
 func TestPacketUpUploadsChunks(t *testing.T) {
