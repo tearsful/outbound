@@ -9,12 +9,16 @@ import (
 )
 
 func TestGrpcClientCacheKeySeparatesTLSPolicy(t *testing.T) {
-	secure := grpcClientCacheKey("d1", "example.com:443", "example.com", false, false, 0, false)
-	insecureKey := grpcClientCacheKey("d1", "example.com:443", "example.com", true, false, 0, false)
-	h2c := grpcClientCacheKey("d1", "example.com:443", "example.com", false, true, 0, false)
-	otherSNI := grpcClientCacheKey("d1", "example.com:443", "other.example.com", false, false, 0, false)
-	otherDialer := grpcClientCacheKey("d2", "example.com:443", "example.com", false, false, 0, false)
-	otherMark := grpcClientCacheKey("d1", "example.com:443", "example.com", false, false, 100, false)
+	secure := grpcClientCacheKey("", "d1", "example.com:443", "example.com", false, false, 0, false)
+	insecureKey := grpcClientCacheKey("", "d1", "example.com:443", "example.com", true, false, 0, false)
+	h2c := grpcClientCacheKey("", "d1", "example.com:443", "example.com", false, true, 0, false)
+	otherSNI := grpcClientCacheKey("", "d1", "example.com:443", "other.example.com", false, false, 0, false)
+	otherDialer := grpcClientCacheKey("", "d2", "example.com:443", "example.com", false, false, 0, false)
+	otherMark := grpcClientCacheKey("", "d1", "example.com:443", "example.com", false, false, 100, false)
+	otherScope := grpcClientCacheKey("reload-1", "d1", "example.com:443", "example.com", false, false, 0, false)
+	if secure == otherScope {
+		t.Fatalf("different reload scope must not share cache key: %q", secure)
+	}
 
 	if secure == insecureKey {
 		t.Fatalf("secure and insecure dials must not share cache key: %q", secure)

@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -34,15 +35,47 @@ var (
 	globalCCAccess sync.Mutex
 )
 
+func scopedCachePrefix(scope string) string {
+	return scope + "\x00"
+}
+
 func CleanGlobalClientConnectionCache() {
 	globalCCAccess.Lock()
-	defer globalCCAccess.Unlock()
+	cached := make([]*grpc.ClientConn, 0, len(globalCCMap))
 	for _, meta := range globalCCMap {
 		if meta != nil && meta.cc != nil {
-			_ = meta.cc.Close()
+			cached = append(cached, meta.cc)
 		}
 	}
 	globalCCMap = make(map[string]*clientConnMeta)
+	globalCCAccess.Unlock()
+
+	for _, cc := range cached {
+		_ = cc.Close()
+	}
+}
+
+func CleanScopedClientConnectionCache(scope string) {
+	if scope == "" {
+		return
+	}
+	prefix := scopedCachePrefix(scope)
+	globalCCAccess.Lock()
+	var cached []*grpc.ClientConn
+	for key, meta := range globalCCMap {
+		if !strings.HasPrefix(key, prefix) {
+			continue
+		}
+		if meta != nil && meta.cc != nil {
+			cached = append(cached, meta.cc)
+		}
+		delete(globalCCMap, key)
+	}
+	globalCCAccess.Unlock()
+
+	for _, cc := range cached {
+		_ = cc.Close()
+	}
 }
 
 type ccCanceller func()
@@ -414,7 +447,8 @@ func getGrpcClientConn(ctx context.Context, tcpDialer netproxy.Dialer, serverNam
 		}))
 	}
 
-	cacheKey := grpcClientCacheKey(fmt.Sprintf("%p", tcpDialer), address, serverName, allowInsecure, plainText, somark, mptcp)
+	scope := netproxy.TransportCacheNamespace(tcpDialer)
+	cacheKey := grpcClientCacheKey(scope, fmt.Sprintf("%p", tcpDialer), address, serverName, allowInsecure, plainText, somark, mptcp)
 
 	keepAlive := keepalive.ClientParameters{
 		Time:                30 * time.Second,
@@ -470,8 +504,9 @@ func getGrpcClientConn(ctx context.Context, tcpDialer netproxy.Dialer, serverNam
 	return acquireGrpcClientConn(cacheKey, multiMode, create)
 }
 
-// grpcClientCacheKey keeps dialer identity + TLS/socket policy in the key so
-// insecure/secure, SNI, mark, or chained dialers never share a ClientConn.
-func grpcClientCacheKey(dialerID, address, serverName string, allowInsecure bool, plainText bool, somark uint32, mptcp bool) string {
-	return fmt.Sprintf("%s|%s|sni=%s|insecure=%t|h2c=%t|mark=%d|mptcp=%t", dialerID, address, serverName, allowInsecure, plainText, somark, mptcp)
+// grpcClientCacheKey keeps reload-scope + dialer identity + TLS/socket policy
+// in the key so insecure/secure, SNI, mark, or chained dialers never share a
+// ClientConn, and CleanScopedClientConnectionCache can drop one generation.
+func grpcClientCacheKey(scope, dialerID, address, serverName string, allowInsecure bool, plainText bool, somark uint32, mptcp bool) string {
+	return fmt.Sprintf("%s\x00%s|%s|sni=%s|insecure=%t|h2c=%t|mark=%d|mptcp=%t", scope, dialerID, address, serverName, allowInsecure, plainText, somark, mptcp)
 }
